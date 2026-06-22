@@ -153,7 +153,7 @@ main          ← Production — protected, merge via PR only
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Git foundations (structure, ADRs, runbooks, templates) | ✅ Done |
-| **1** | Infrastructure — Terraform → AWS EKS | ⬜ |
+| **1** | Infrastructure — Terraform → AWS EKS | ✅ |
 | **2** | App deployed — Kustomize across dev/staging/prod | ⬜ |
 | **3** | CI/CD + GitOps — GitHub Actions + ArgoCD + DockerHub | ⬜ |
 | **4** | Security — Gitleaks, Checkov, Kube-score, External Secrets, OPA, NetworkPolicies, Falco | ⬜ |
