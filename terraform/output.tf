@@ -13,11 +13,16 @@
 # limitations under the License.
 
 output "cluster_location" {
-  description = "Location of the cluster"
-  value       = resource.google_container_cluster.my_cluster.location
+  description = "Region of the cluster"
+  value       = var.region
 }
 
 output "cluster_name" {
   description = "Name of the cluster"
-  value       = resource.google_container_cluster.my_cluster.name
+  value       = module.eks.cluster_name
+}
+
+output "cluster_endpoint" {
+  description = "Endpoint of the EKS cluster"
+  value       = module.eks.cluster_endpoint
 }

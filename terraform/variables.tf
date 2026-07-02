@@ -12,21 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-variable "gcp_project_id" {
-  type        = string
-  description = "The GCP project ID to apply this config to"
-}
-
 variable "name" {
   type        = string
-  description = "Name given to the new GKE cluster"
+  description = "Name given to the new EKS cluster"
   default     = "online-boutique"
 }
 
 variable "region" {
   type        = string
-  description = "Region of the new GKE cluster"
-  default     = "us-central1"
+  description = "AWS region of the new EKS cluster"
+  default     = "us-east-1"
+}
+
+variable "vpc_cidr" {
+  type        = string
+  description = "CIDR block for the VPC housing the EKS cluster"
+  default     = "10.0.0.0/16"
+}
+
+variable "cluster_version" {
+  type        = string
+  description = "Kubernetes version for the EKS cluster"
+  default     = "1.29"
 }
 
 variable "namespace" {
@@ -41,7 +48,7 @@ variable "filepath_manifest" {
   default     = "../kustomize/"
 }
 
-variable "memorystore" {
+variable "elasticache" {
   type        = bool
-  description = "If true, Online Boutique's in-cluster Redis cache will be replaced with a Google Cloud Memorystore Redis cache"
+  description = "If true, Online Boutique's in-cluster Redis cache will be replaced with an AWS ElastiCache Redis cache"
 }

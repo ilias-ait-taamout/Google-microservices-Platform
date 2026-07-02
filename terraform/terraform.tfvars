@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-gcp_project_id = "<project_id_here>"
+region = "us-east-1"
 
-memorystore = false
+elasticache = false

@@ -14,62 +14,84 @@
 
 # Definition of local variables
 locals {
-  base_apis = [
-    "container.googleapis.com",
-    "monitoring.googleapis.com",
-    "cloudtrace.googleapis.com",
-    "cloudprofiler.googleapis.com"
-  ]
-  memorystore_apis = ["redis.googleapis.com"]
-  cluster_name     = google_container_cluster.my_cluster.name
+  cluster_name = var.name
 }
 
-# Enable Google Cloud APIs
-module "enable_google_apis" {
-  source  = "terraform-google-modules/project-factory/google//modules/project_services"
-  version = "~> 18.0"
-
-  project_id                  = var.gcp_project_id
-  disable_services_on_destroy = false
-
-  # activate_apis is the set of base_apis and the APIs required by user-configured deployment options
-  activate_apis = concat(local.base_apis, var.memorystore ? local.memorystore_apis : [])
+data "aws_availability_zones" "available" {
+  state = "available"
 }
 
-# Create GKE cluster
-resource "google_container_cluster" "my_cluster" {
+# Create the VPC that will house the EKS cluster
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "~> 5.0"
 
-  name     = var.name
-  location = var.region
+  name = "${var.name}-vpc"
+  cidr = var.vpc_cidr
 
-  # Enable autopilot for this cluster
-  enable_autopilot = true
+  azs             = slice(data.aws_availability_zones.available.names, 0, 3)
+  private_subnets = [for k in range(3) : cidrsubnet(var.vpc_cidr, 4, k)]
+  public_subnets  = [for k in range(3) : cidrsubnet(var.vpc_cidr, 4, k + 3)]
 
-  # Set an empty ip_allocation_policy to allow autopilot cluster to spin up correctly
-  ip_allocation_policy {
+  enable_nat_gateway   = true
+  single_nat_gateway   = true
+  enable_dns_hostnames = true
+
+  public_subnet_tags = {
+    "kubernetes.io/role/elb" = 1
   }
 
-  # Avoid setting deletion_protection to false
-  # until you're ready (and certain you want) to destroy the cluster.
-  # deletion_protection = false
+  private_subnet_tags = {
+    "kubernetes.io/role/internal-elb" = 1
+  }
+}
 
-  depends_on = [
-    module.enable_google_apis
-  ]
+# Create EKS cluster on Fargate (serverless, no node management, mirroring GKE Autopilot)
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "~> 20.0"
+
+  cluster_name    = local.cluster_name
+  cluster_version = var.cluster_version
+
+  vpc_id                   = module.vpc.vpc_id
+  subnet_ids               = module.vpc.private_subnets
+  control_plane_subnet_ids = module.vpc.private_subnets
+
+  cluster_endpoint_public_access = true
+
+  fargate_profiles = {
+    default = {
+      name = "default"
+      selectors = [
+        { namespace = var.namespace },
+        { namespace = "kube-system" }
+      ]
+    }
+  }
+
+  # coredns must be told to run on Fargate since this cluster has no EC2 node group
+  cluster_addons = {
+    coredns = {
+      configuration_values = jsonencode({
+        computeType = "Fargate"
+      })
+    }
+    kube-proxy = {}
+    vpc-cni    = {}
+  }
 }
 
 # Get credentials for cluster
-module "gcloud" {
-  source  = "terraform-google-modules/gcloud/google"
-  version = "~> 4.0"
+resource "null_resource" "kubeconfig" {
+  provisioner "local-exec" {
+    interpreter = ["bash", "-exc"]
+    command     = "aws eks update-kubeconfig --name ${local.cluster_name} --region ${var.region}"
+  }
 
-  platform              = "linux"
-  additional_components = ["kubectl", "beta"]
-
-  create_cmd_entrypoint = "gcloud"
-  # Module does not support explicit dependency
-  # Enforce implicit dependency through use of local variable
-  create_cmd_body = "container clusters get-credentials ${local.cluster_name} --zone=${var.region} --project=${var.gcp_project_id}"
+  depends_on = [
+    module.eks
+  ]
 }
 
 # Apply YAML kubernetes-manifest configurations
@@ -80,7 +102,7 @@ resource "null_resource" "apply_deployment" {
   }
 
   depends_on = [
-    module.gcloud
+    null_resource.kubeconfig
   ]
 }
 
@@ -89,7 +111,6 @@ resource "null_resource" "wait_conditions" {
   provisioner "local-exec" {
     interpreter = ["bash", "-exc"]
     command     = <<-EOT
-    kubectl wait --for=condition=AVAILABLE apiservice/v1beta1.metrics.k8s.io --timeout=180s
     kubectl wait --for=condition=ready pods --all -n ${var.namespace} --timeout=280s
     EOT
   }
