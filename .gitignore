@@ -6,6 +6,7 @@
 .project
 .skaffold-*.yaml
 .terraform.lock.hcl
+.claude.md
 .terraform/*
 .venv/
 .vs/
@@ -26,3 +27,9 @@ obj/
 pkg/
 release/wi-kubernetes-manifests.yaml
 vendor/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
