@@ -1,0 +1,56 @@
+#!/bin/bash
+# =============================================================================
+# k3s AGENT bootstrap — runs once, at first boot, via cloud-init
+# =============================================================================
+set -euxo pipefail
+exec > >(tee -a /var/log/k3s-bootstrap.log) 2>&1
+
+echo "=== k3s agent bootstrap started at $(date -u) ==="
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y curl ca-certificates
+
+IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+
+PUBLIC_IP=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
+
+# -----------------------------------------------------------------------------
+# Wait for the control plane to be listening
+# -----------------------------------------------------------------------------
+# Terraform guarantees the server INSTANCE exists before this agent starts —
+# but not that k3s finished installing on it. Both boot at roughly the same
+# time, and the server needs a couple of minutes for apt + the k3s install.
+#
+# Without this loop the agent tries to join a dead port, fails, and you end up
+# with a cluster that is silently missing a node.
+#
+# bash's /dev/tcp is used instead of nc so nothing extra has to be installed.
+echo "waiting for ${server_ip}:6443 ..."
+for i in $(seq 1 120); do
+  if timeout 2 bash -c "cat < /dev/null > /dev/tcp/${server_ip}/6443" 2>/dev/null; then
+    echo "control plane reachable after $i attempts"
+    break
+  fi
+  sleep 5
+done
+
+# -----------------------------------------------------------------------------
+# Join the cluster
+# -----------------------------------------------------------------------------
+# K3S_URL is what makes the installer choose AGENT mode instead of server mode.
+# K3S_TOKEN must match the server's token exactly.
+#
+# Private IP for K3S_URL: agents talk to the server over the VPC, which is free
+# and stays inside AWS. Only YOUR kubectl uses the public IP.
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" \
+  K3S_URL="https://${server_ip}:6443" \
+  K3S_TOKEN="${k3s_token}" \
+  sh -s - agent \
+    --node-name "${node_name}" \
+    --node-external-ip "$PUBLIC_IP"
+
+echo "=== k3s agent bootstrap finished at $(date -u) ==="

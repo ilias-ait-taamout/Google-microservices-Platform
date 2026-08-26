@@ -1,0 +1,123 @@
+# =============================================================================
+#  RBAC DU SERVEUR MCP — la garantie de sécurité, appliquée par Kubernetes
+# =============================================================================
+#  CE FICHIER EST LE CŒUR DE L'ARGUMENTAIRE SÉCURITÉ DU PROJET.
+#
+#  Le principe : la garantie "l'agent ne peut rien modifier" ne repose PAS sur
+#  une consigne dans le prompt, ni sur le fait que le code Python n'appelle
+#  pas de méthode d'écriture. Elle repose sur ce ClusterRole.
+#
+#  Différence essentielle à savoir formuler :
+#     "mon code n'écrit pas"      -> garantie applicative, faible
+#     "mon code ne PEUT pas écrire" -> garantie du plan de contrôle, forte
+#
+#  Même si le modèle demandait une suppression, même si le code était modifié
+#  par un attaquant, l'apiserver renverrait 403.
+#
+#  VÉRIFICATION (à montrer en démonstration) :
+#     kubectl auth can-i list pods   --as=system:serviceaccount:security:mcp-k8s-auditor
+#     # yes
+#     kubectl auth can-i delete pods --as=system:serviceaccount:security:mcp-k8s-auditor
+#     # no
+# =============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security
+
+---
+# --- L'identité du serveur MCP ----------------------------------------------
+# Kubernetes montera automatiquement dans le pod :
+#   /var/run/secrets/kubernetes.io/serviceaccount/token   (JWT à durée limitée)
+#   /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+# Aucun secret à gérer, aucune rotation à automatiser : le kubelet s'en charge.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-k8s-auditor
+  namespace: security
+
+---
+# --- Les permissions : LECTURE SEULE, SANS EXCEPTION ------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: mcp-k8s-auditor
+rules:
+  # Ressources de base nécessaires à la cartographie
+  - apiGroups: [""]
+    resources:
+      - pods
+      - namespaces
+      - serviceaccounts
+      - services
+    verbs: ["get", "list"]          # <-- aucun create/update/patch/delete
+
+  # Segmentation réseau
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+
+  # Analyse des privilèges
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - roles
+      - rolebindings
+      - clusterroles
+      - clusterrolebindings
+    verbs: ["get", "list"]
+
+  # Workloads, pour remonter jusqu'au Deployment propriétaire d'un pod
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "statefulsets"]
+    verbs: ["get", "list"]
+
+  # NOTE DÉLIBÉRÉE : les Secrets ne figurent PAS dans cette liste.
+  # L'agent n'a aucune raison de lire le contenu des secrets, et le lui
+  # interdire évite qu'une donnée sensible transite vers l'API du modèle.
+  # C'est une décision d'architecture, pas un oubli.
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: mcp-k8s-auditor
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mcp-k8s-auditor
+subjects:
+  - kind: ServiceAccount
+    name: mcp-k8s-auditor
+    namespace: security
+
+---
+# =============================================================================
+#  SEGMENTATION RÉSEAU DE L'AGENT LUI-MÊME
+#  On applique à notre propre agent le niveau d'exigence qu'on audite chez
+#  les autres. Deny-by-default, avec deux sorties explicites :
+#    - DNS, sans quoi plus rien ne résout
+#    - HTTPS, pour joindre api.anthropic.com
+#  Point souvent oublié en déploiement réel : sans cette règle d'egress,
+#  l'appel à l'API du modèle échoue en timeout.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-auditor-egress
+  namespace: security
+spec:
+  podSelector:
+    matchLabels:
+      app: k8s-security-auditor
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - ports:
+        - {protocol: TCP, port: 443}      # apiserver + api.anthropic.com

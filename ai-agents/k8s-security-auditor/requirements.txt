@@ -1,0 +1,23 @@
+# =============================================================================
+#  Dépendances — installation :  pip install -r requirements.txt
+# =============================================================================
+
+# SDK Anthropic : appels à l'API Claude (messages + tool use)
+anthropic>=0.40.0
+
+# SDK MCP officiel : serveur (FastMCP) et client (stdio)
+mcp>=1.2.0
+
+# Client Kubernetes officiel.
+# ⚠️ Utiliser une version récente : les anciennes lisent le token du
+# ServiceAccount une seule fois au démarrage et prennent un 401 après
+# l'expiration du token projeté (~1 h) sur un serveur long-running.
+kubernetes>=31.0.0
+
+# Base vectorielle pour le RAG. Mode fichier, aucun serveur à déployer.
+# Sa fonction d'embedding par défaut est un ONNX all-MiniLM-L6-v2 (~80 Mo)
+# exécuté en local sur CPU : pas de torch, pas d'appel API, hors ligne.
+chromadb>=0.5.0
+
+# Chargement du fichier .env en développement local
+python-dotenv>=1.0.0

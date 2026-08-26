@@ -1,0 +1,23 @@
+# Secrets — ne doivent JAMAIS entrer dans Git
+.env
+*.pem
+*.key
+kubeconfig
+
+# Index vectoriel (régénérable avec : python rag/ingest.py)
+rag/chroma_db/
+
+# Rapports d'audit générés
+rapports/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

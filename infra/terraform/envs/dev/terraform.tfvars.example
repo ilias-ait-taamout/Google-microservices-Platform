@@ -1,0 +1,23 @@
+# =============================================================================
+# Copy this file to terraform.tfvars and fill in your values.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars is gitignored (*.tfvars). That is deliberate — admin_cidr
+# is your home IP address and does not belong in a public repository.
+# =============================================================================
+
+# Your public IP as a /32.
+#   curl -s https://checkip.amazonaws.com
+# Re-apply whenever your ISP changes it, or SSH and kubectl will start timing out.
+admin_cidr = "X.X.X.X/32"
+
+# --- SSH: pick ONE of the two below --------------------------------------------
+
+# (a) Terraform creates the AWS key pair from your local public key.
+#     Generate one first if you do not have it:  ssh-keygen -t ed25519 -C "gmp-dev"
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# (b) OR reuse a key pair you already created in the eu-west-3 console.
+#     Uncomment this and delete the line above.
+# existing_key_pair_name = "my-existing-keypair"

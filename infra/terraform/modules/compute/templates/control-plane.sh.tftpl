@@ -1,0 +1,95 @@
+#!/bin/bash
+# =============================================================================
+# k3s SERVER bootstrap — runs once, at first boot, via cloud-init
+# =============================================================================
+# Rendered by Terraform: every ${...} below is substituted at plan time.
+# Log lands in /var/log/k3s-bootstrap.log — read it first when something fails.
+# =============================================================================
+set -euxo pipefail
+exec > >(tee -a /var/log/k3s-bootstrap.log) 2>&1
+
+echo "=== k3s server bootstrap started at $(date -u) ==="
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get install -y curl ca-certificates
+
+# -----------------------------------------------------------------------------
+# Discover our own public IP via IMDSv2
+# -----------------------------------------------------------------------------
+# Terraform cannot pass the instance its own public IP — that value only exists
+# after the instance is created, so referencing it here would be a dependency
+# cycle. The node asks the metadata service instead.
+#
+# Two steps because IMDSv2 is enforced (http_tokens = "required"): fetch a
+# session token first, then use it as a header. IMDSv1's single unauthenticated
+# GET is exactly what makes SSRF bugs turn into stolen credentials.
+IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+
+PUBLIC_IP=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
+
+PRIVATE_IP=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
+  http://169.254.169.254/latest/meta-data/local-ipv4)
+
+echo "public=$PUBLIC_IP private=$PRIVATE_IP"
+
+# -----------------------------------------------------------------------------
+# Install k3s in server mode
+# -----------------------------------------------------------------------------
+# Flags that matter:
+#
+#  --token                    shared secret the agents present when joining
+#  --node-name                stable name, so kubectl get nodes is readable
+#  --tls-san $PUBLIC_IP       adds the public IP to the API server certificate.
+#                             WITHOUT THIS, kubectl from your laptop fails with
+#                             "certificate is valid for 10.0.1.x, not 13.37.x.x"
+#  --node-external-ip         so other nodes and kubectl see the right address
+#  --write-kubeconfig-mode    644, so we can scp the kubeconfig without sudo
+#  --disable traefik          Phase 2/3 brings its own ingress controller
+#
+# Flannel's default backend is VXLAN on UDP 8472 — that is the port the
+# security group opens between nodes.
+%{ if disable_traefik ~}
+DISABLE_FLAGS="--disable traefik"
+%{ else ~}
+DISABLE_FLAGS=""
+%{ endif ~}
+
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" \
+  sh -s - server \
+    --token "${k3s_token}" \
+    --node-name "${node_name}" \
+    --tls-san "$PUBLIC_IP" \
+    --node-external-ip "$PUBLIC_IP" \
+    --write-kubeconfig-mode 644 \
+    $DISABLE_FLAGS
+
+# -----------------------------------------------------------------------------
+# Wait until the node is actually Ready before declaring success
+# -----------------------------------------------------------------------------
+echo "waiting for node to become Ready..."
+for i in $(seq 1 60); do
+  if k3s kubectl get nodes 2>/dev/null | grep -q " Ready "; then
+    echo "node is Ready after $i attempts"
+    break
+  fi
+  sleep 5
+done
+
+# -----------------------------------------------------------------------------
+# Leave a laptop-ready kubeconfig behind
+# -----------------------------------------------------------------------------
+# The generated kubeconfig points at 127.0.0.1, which is useless from outside.
+# Rewrite it to the public IP and drop it where scp can grab it.
+mkdir -p /home/ubuntu/.kube
+sed "s|https://127.0.0.1:6443|https://$PUBLIC_IP:6443|" \
+  /etc/rancher/k3s/k3s.yaml > /home/ubuntu/.kube/config
+chown -R ubuntu:ubuntu /home/ubuntu/.kube
+chmod 600 /home/ubuntu/.kube/config
+
+k3s kubectl get nodes -o wide || true
+
+echo "=== k3s server bootstrap finished at $(date -u) ==="
