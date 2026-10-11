@@ -41,15 +41,23 @@ locals {
 }
 
 # -----------------------------------------------------------------------------
-# Ubuntu AMI lookup
+# Cluster join token
 # -----------------------------------------------------------------------------
-# Never hardcode an AMI ID. They are region-specific and get deprecated, so a
-# hardcoded ID is a build that works today and fails in six months.
+# Alphanumeric only: this string is interpolated into a shell command line in
+# the bootstrap script, and special characters there are a quoting bug waiting
+# to happen.
 resource "random_password" "k3s_token" {
   length  = 48
-  special = false # alphanumeric only - this string goes into a shell command line
+  special = false
 }
 
+# -----------------------------------------------------------------------------
+# Ubuntu AMI lookup
+# -----------------------------------------------------------------------------
+# A `data` source READS existing AWS state — it creates nothing.
+#
+# Never hardcode an AMI ID. They are region-specific and get deprecated, so a
+# hardcoded ID is a build that works today and fails in six months.
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical's official AWS account ID
@@ -96,7 +104,7 @@ resource "aws_instance" "server" {
 
   vpc_security_group_ids = [var.security_group_id]
 
-  # Rendered at plan time and passed to cloud-init. Runs once, at first boot.
+  # Rendered at plan time and handed to cloud-init. Runs once, at first boot.
   # Changing this script REPLACES the instance — that is intentional: the node
   # is immutable, you rebuild rather than patch it in place.
   user_data = templatefile("${path.module}/templates/control-plane.sh.tftpl", {
@@ -122,9 +130,9 @@ resource "aws_instance" "server" {
   }
 
   tags = merge(local.tags, {
-    Name                = "${local.name_prefix}-server"
-    Role                = "control-plane"
-    "k3s.io/node-role"  = "server"
+    Name               = "${local.name_prefix}-server"
+    Role               = "control-plane"
+    "k3s.io/node-role" = "server"
   })
 }
 

@@ -2,7 +2,12 @@
 # =============================================================================
 # k3s SERVER bootstrap — runs once, at first boot, via cloud-init
 # =============================================================================
-# Rendered by Terraform: every ${...} below is substituted at plan time.
+# Rendered by Terraform before the instance is created. The placeholders are
+# substituted from the map passed in modules/compute/main.tf.
+#
+# Bash variables here are always written without braces, because the braces
+# form belongs to Terraform.
+#
 # Log lands in /var/log/k3s-bootstrap.log — read it first when something fails.
 # =============================================================================
 set -euxo pipefail
@@ -42,7 +47,7 @@ echo "public=$PUBLIC_IP private=$PRIVATE_IP"
 #
 #  --token                    shared secret the agents present when joining
 #  --node-name                stable name, so kubectl get nodes is readable
-#  --tls-san $PUBLIC_IP       adds the public IP to the API server certificate.
+#  --tls-san PUBLIC_IP        adds the public IP to the API server certificate.
 #                             WITHOUT THIS, kubectl from your laptop fails with
 #                             "certificate is valid for 10.0.1.x, not 13.37.x.x"
 #  --node-external-ip         so other nodes and kubectl see the right address

@@ -1,5 +1,5 @@
 # =============================================================================
-# envs/dev — the root module. THIS is where we run terraform.
+# envs/dev — the root module. THIS is where you run terraform.
 # =============================================================================
 # It contains no resources of its own. Its entire job is to call the two child
 # modules with dev-specific values and wire one's outputs into the other's
@@ -20,6 +20,7 @@ module "network" {
   admin_cidr     = var.admin_cidr
 
   # Phase 1: reach the app through NodePort from your own IP only.
+  # Flip to true in Phase 2/3 once a real ingress controller is in front.
   allow_http_from_internet = false
 }
 
@@ -33,7 +34,7 @@ module "compute" {
   # THE WIRING. This is the entire mechanism by which modules connect:
   # an output of one becomes an input of the other.
   #
-  # It also creates the dependency graph. Terraform reads these references and
+  # It also builds the dependency graph. Terraform reads these references and
   # works out on its own that the VPC, subnets and security group must exist
   # before any instance is launched. You never write depends_on for this.
   # ---------------------------------------------------------------------------

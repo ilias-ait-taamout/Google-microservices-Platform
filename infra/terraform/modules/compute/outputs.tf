@@ -23,7 +23,7 @@ output "agent_public_ips" {
 }
 
 output "agent_ids" {
-  description = "Map of agent name -> EC2 instance ID. Used by `make stop` / `make start`."
+  description = "Map of agent name -> EC2 instance ID."
   value       = { for name, inst in aws_instance.agent : name => inst.id }
 }
 

@@ -1,28 +1,10 @@
-# =============================================================================
-# envs/dev — REMOTE STATE BACKEND
-# =============================================================================
-# This is the file that makes state live in S3 instead of on your laptop.
-#
-# Bucket "ilias-mgp-tfstate" was created by hand in the console. That is the
-# normal, accepted exception to "everything in code": Terraform cannot create
-# the bucket that stores its own state. Every OTHER resource in this project
-# is created by Terraform.
-#
-# Note what is NOT here:
-#   - no variables. Backend blocks are read before variables are evaluated,
-#     so every value must be a literal string. This is a Terraform limitation,
-#     not a style choice.
-#   - no dynamodb_table. See the locking note at the bottom.
-# =============================================================================
-
 terraform {
-  # 1.11+ : `use_lockfile` (S3-native locking) is generally available.
   required_version = ">= 1.11.0"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.0"
+      version = "~>6.0"
     }
   }
 

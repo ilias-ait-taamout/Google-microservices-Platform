@@ -25,20 +25,29 @@ output "vpc_id" {
   value       = module.network.vpc_id
 }
 
+output "all_instance_ids" {
+  description = "Every instance ID in the cluster. Read by cluster.ps1 stop/start."
+  value       = module.compute.all_instance_ids
+}
+
+output "ami_id" {
+  description = "The Ubuntu AMI actually selected. Worth recording — it changes as Canonical publishes new builds."
+  value       = module.compute.ami_id
+}
+
 output "next_steps" {
   description = "What to do once apply finishes."
   value       = <<-EOT
 
-    ┌──────────────────────────────────────────────────────────────────┐
-    │  Cluster is provisioning. k3s needs ~3 min after apply returns.  │
-    └──────────────────────────────────────────────────────────────────┘
+    ----------------------------------------------------------------
+      Cluster is provisioning. k3s needs ~3 min after apply returns.
+    ----------------------------------------------------------------
 
     1. Fetch the kubeconfig:
-       scp ubuntu@${module.compute.server_public_ip}:~/.kube/config ./kubeconfig-dev.yaml
+       .\cluster.ps1 kubeconfig
 
     2. Point kubectl at it:
-       $env:KUBECONFIG = "$PWD\kubeconfig-dev.yaml"      # PowerShell
-       export KUBECONFIG=$PWD/kubeconfig-dev.yaml         # bash
+       $env:KUBECONFIG = "$PWD\kubeconfig-dev.yaml"
 
     3. Confirm all three nodes are Ready:
        kubectl get nodes -o wide
@@ -46,6 +55,9 @@ output "next_steps" {
     If a node is missing, SSH in and read the bootstrap log:
        ssh ubuntu@${module.compute.server_public_ip}
        sudo tail -100 /var/log/k3s-bootstrap.log
+
+    When you finish for the day:
+       .\cluster.ps1 down
 
   EOT
 }

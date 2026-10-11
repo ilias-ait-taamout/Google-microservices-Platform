@@ -31,47 +31,26 @@ locals {
   )
 }
 
-# -----------------------------------------------------------------------------
-# 1. VPC
-# -----------------------------------------------------------------------------
 resource "aws_vpc" "this" {
-  cidr_block = var.vpc_cidr
-
-  # Both required for instances to resolve DNS names — without them the nodes
-  # cannot reach get.k3s.io, the Ubuntu apt mirrors or DockerHub.
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
   tags = merge(local.tags, { Name = "${local.name_prefix}-vpc" })
-}
 
-# -----------------------------------------------------------------------------
-# 2. Internet Gateway
-# -----------------------------------------------------------------------------
-# An IGW alone does nothing. It only matters once a route table points
-# 0.0.0.0/0 at it — see step 4.
+}
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
 
   tags = merge(local.tags, { Name = "${local.name_prefix}-igw" })
 }
-
-# -----------------------------------------------------------------------------
-# 3. Three public subnets, one per AZ
-# -----------------------------------------------------------------------------
-# for_each over the map => three subnets addressed by AZ name, not by index:
-#   aws_subnet.public["eu-west-3a"]
-#   aws_subnet.public["eu-west-3b"]
-#   aws_subnet.public["eu-west-3c"]
 resource "aws_subnet" "public" {
   for_each = var.public_subnets
 
   vpc_id            = aws_vpc.this.id
-  availability_zone = each.key   # "eu-west-3a"
-  cidr_block        = each.value # "10.0.1.0/24"
+  availability_zone = each.key
+  cidr_block        = each.value
 
-  # Every instance launched here gets a public IPv4 automatically, so no
-  # Elastic IPs to allocate (and none to forget about and get billed for).
   map_public_ip_on_launch = true
 
   tags = merge(local.tags, {
@@ -84,14 +63,6 @@ resource "aws_subnet" "public" {
   })
 }
 
-# -----------------------------------------------------------------------------
-# 4. Route table — "not local? send it to the IGW"
-# -----------------------------------------------------------------------------
-# A subnet is "public" for exactly one reason: its route table has a default
-# route to an Internet Gateway. That is the whole definition.
-#
-# One route table shared by all three subnets. Three identical tables would
-# work too and would just be three things to keep in sync.
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
 
@@ -110,21 +81,8 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# -----------------------------------------------------------------------------
-# 5. Security group for the k3s nodes
-# -----------------------------------------------------------------------------
-# A security group is a STATEFUL firewall on the instance's network interface.
-# Stateful = if a request is allowed in, its reply is allowed out automatically;
-# you never write matching return rules.
-#
-# Default posture: deny all inbound, and in Terraform, deny all outbound too
-# until an egress rule says otherwise.
-#
-# One SG for all three nodes. Rules referencing the SG itself express
-# "from any instance wearing this badge" — which is how node-to-node traffic
-# is allowed without knowing IPs that do not exist yet at plan time.
 resource "aws_security_group" "nodes" {
-  name        = "${local.name_prefix}-nodes"
+  name_prefix = "${local.name_prefix}-nodes-"
   description = "k3s server and agents"
   vpc_id      = aws_vpc.this.id
 
