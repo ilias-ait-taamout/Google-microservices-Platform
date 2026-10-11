@@ -47,6 +47,11 @@ variable "agent_count" {
   description = "Number of worker nodes. Must not exceed the number of subnets minus one."
   type        = number
   default     = 2
+
+  validation {
+    condition     = var.agent_count >= 1
+    error_message = "At least one agent is required."
+  }
 }
 
 variable "root_volume_size" {
@@ -124,7 +129,7 @@ variable "k3s_token" {
 }
 
 variable "disable_traefik" {
-  description = "k3s ships Traefik as its default ingress. Disabled here because Phase 2/3 installs its own ingress; two ingress controllers fighting over port 80 is a bad first day."
+  description = "k3s ships Traefik as its default ingress. Disabled here because Phase 2/3 installs its own; two ingress controllers fighting over port 80 is a bad first day."
   type        = bool
   default     = true
 }

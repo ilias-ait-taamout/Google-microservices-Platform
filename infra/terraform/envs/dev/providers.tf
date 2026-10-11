@@ -4,6 +4,10 @@
 # The backend says WHERE STATE IS STORED.
 # The provider says WHERE RESOURCES ARE CREATED.
 # They are two different things and both happen to point at eu-west-3 here.
+#
+# Note there is no provider block in modules/network or modules/compute. A
+# child module declares which providers it NEEDS (versions.tf) but never
+# configures them — that is what lets the same module build any region.
 # =============================================================================
 
 provider "aws" {

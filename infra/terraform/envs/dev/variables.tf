@@ -4,8 +4,9 @@
 # Non-secret dev values keep their defaults here so the environment is
 # reproducible from Git alone.
 #
-# admin_cidr and the SSH key settings have NO defaults — they are specific to
-# your machine. Put them in terraform.tfvars, which .gitignore excludes.
+# admin_cidr has NO default — it is your home IP, it changes, and it must not
+# live in a committed file. It goes in terraform.tfvars, which .gitignore
+# excludes.
 # =============================================================================
 
 variable "project" {
@@ -27,7 +28,7 @@ variable "aws_region" {
 }
 
 variable "aws_profile" {
-  description = "Named AWS CLI profile. Must match the profile in backend.tf."
+  description = "Named AWS CLI profile. Must match the profile in backend.tf. Check yours with: aws configure list-profiles"
   type        = string
   default     = "terraform-mgp"
 }
@@ -83,7 +84,7 @@ variable "root_volume_size" {
 }
 
 variable "k3s_version" {
-  description = "Pinned k3s version."
+  description = "Pinned k3s version. Releases: https://github.com/k3s-io/k3s/releases"
   type        = string
   default     = "v1.31.5+k3s1"
 }
@@ -92,13 +93,13 @@ variable "k3s_version" {
 # Set EXACTLY ONE of these in terraform.tfvars.
 
 variable "existing_key_pair_name" {
-  description = "Name of an EC2 key pair that already exists in eu-west-3. Null means Terraform creates one."
+  description = "Name of an EC2 key pair that already exists in eu-west-3. Null means Terraform creates one from ssh_public_key_path."
   type        = string
   default     = null
 }
 
 variable "ssh_public_key_path" {
-  description = "Path to your public key, used only when existing_key_pair_name is null."
+  description = "Path to your PUBLIC key, used only when existing_key_pair_name is null. No key yet? ssh-keygen -t ed25519 -C \"gmp-dev\""
   type        = string
   default     = "~/.ssh/id_ed25519.pub"
 }
