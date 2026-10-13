@@ -52,29 +52,55 @@ group does not open port 80, while `30000-32767` is already open to
       unfixed port means the second `apply` collides.
 
 ### Overlay dev
-- [ ] **5.** `overlays/dev/` skeleton: `kustomization.yaml` pointing at
+- [x] **5.** `overlays/dev/` skeleton: `kustomization.yaml` pointing at
       `../../base`, a `Namespace` resource, the `namespace:` field, and common
       labels (`environment`, `app.kubernetes.io/part-of`)
-- [ ] **6.** Patch `frontend-external` to `type: NodePort` with the port from
+- [x] **6.** Patch `frontend-external` to `type: NodePort` with the port from
       task 4
-- [ ] **7.** Pin the `redis:alpine` and `busybox:latest` tags with an `images:`
+- [x] **7.** Pin the `redis:alpine` and `busybox:latest` tags with an `images:`
       block, without touching the base. The microservice images stay Google's —
       DockerHub images only exist once the CI runs (Phase 3)
-- [ ] **8.** Verify the dev render against the task-2 reference: every resource
+- [x] **8.** Verify the dev render against the task-2 reference: every resource
       in namespace `dev`, no `LoadBalancer` left, labels present
 - [ ] **9.** First real deployment: `up` → `kubeconfig` → `kubectl apply -k` →
       all pods `Ready` → shop reachable at `http://<node-ip>:30080` → `down`
 
 ### Overlays staging and prod
 - [ ] **10.** `overlays/staging`: same structure, own namespace, own nodePort,
-      plus the `network-policies` component
-- [ ] **11.** `overlays/prod`: 2 replicas on stateless services, the
-      `without-loadgenerator` and `network-policies` components, and a
-      PodDisruptionBudget on the frontend
+      plus the `without-loadgenerator` and `network-policies` components
+- [ ] **11.** `overlays/prod`: **2 replicas on the frontend only** (not the 11
+      services), the `without-loadgenerator` and `network-policies`
+      components, and a PodDisruptionBudget on the frontend
       *(a PDB guarantees a minimum number of pods stay alive during maintenance)*
 - [ ] **12.** **Capacity check**: sum the cpu/memory `requests` across all three
-      namespaces and compare against what the nodes actually have free. The
-      agents have 4 GiB each — prod at 2 replicas may not fit
+      namespaces and compare against what the nodes actually have free.
+      Pre-computed below; confirm it against `kubectl describe nodes` in task 13
+
+### Capacity (computed 13 Oct 2026, from `docs/phase2/REFERENCE.md`)
+
+Decision: the loadgenerator only makes sense in dev, so staging and prod both
+drop it, and prod scales **only the frontend** to 2 replicas. The earlier plan
+(loadgenerator everywhere, 2 replicas on every stateless service) came to
+~5610m, which would have left prod pods `Pending`.
+
+| Namespace | Content | CPU requests | Memory requests |
+|---|---|---|---|
+| dev | full base | 1570m | 1368Mi |
+| staging | without loadgenerator | 1270m | 1112Mi |
+| prod | without loadgenerator, frontend ×2 | 1370m | 1176Mi |
+| **Total** | | **4210m** | **3656Mi** |
+
+Against 3 nodes × 2 vCPU = 6000m (~5700m once k3s system pods are counted):
+**~74 % of CPU, it fits**, with ~1500m headroom. Memory is far from a limit
+(~3.6 GiB of ~15 GiB). That headroom will not cover the Phase 5 observability
+stack, so revisit capacity then.
+
+### Note: `components/non-public-frontend` is not usable in Phase 2
+It does not convert `frontend-external` to ClusterIP: it **deletes** it
+(`$patch: delete`), leaving only the internal `frontend` ClusterIP Service.
+Phase 2 needs a NodePort reachable from `admin_cidr`, so each overlay carries
+its own NodePort patch (decision B). The component becomes useful in Phase 3,
+once an Ingress replaces `frontend-external`.
 
 ### Validation and close
 - [ ] **13.** All three environments at once: pods `Ready` in each namespace,
