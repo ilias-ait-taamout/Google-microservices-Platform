@@ -62,8 +62,34 @@ group does not open port 80, while `30000-32767` is already open to
       DockerHub images only exist once the CI runs (Phase 3)
 - [x] **8.** Verify the dev render against the task-2 reference: every resource
       in namespace `dev`, no `LoadBalancer` left, labels present
-- [ ] **9.** First real deployment: `up` → `kubeconfig` → `kubectl apply -k` →
+- [x] **9.** First real deployment: `up` → `kubeconfig` → `kubectl apply -k` →
       all pods `Ready` → shop reachable at `http://<node-ip>:30080` → `down`
+
+### Task 9 result (15 Oct 2026) — DONE
+
+Validated end to end: 12/12 pods `Running` in namespace `dev`,
+`frontend-external` as `NodePort 80:30080/TCP`, and
+`curl -I http://<server_public_ip>:30080` returning `HTTP/1.1 200 OK`.
+
+One real defect was found and fixed on the way, and one false alarm:
+
+- **Real:** `--node-external-ip` was passed to k3s on both the server and the
+  agents. It advertised the public IP to in-cluster clients, so the agents
+  dialled the server's public address for the k3s supervisor tunnel; the
+  packet hairpinned through the IGW and arrived with a public source address
+  that the security group's self-reference rule does not match. The cluster
+  reported all three nodes `Ready` while `kubectl logs`, `exec` and
+  `port-forward` were broken for every pod on an agent. Fixed by removing the
+  flag from both templates and keeping `--tls-san` for external kubectl.
+  Recorded as gotcha 5 in `CLAUDE.md`. Verified after the rebuild with
+  `Remotedialer connected to proxy url="wss://10.0.1.75:6443/..."` (private
+  IP) and `kubectl get --raw "/api/v1/nodes/<agent>/proxy/healthz"` → `ok`
+  on both agents.
+- **False alarm:** `loadgenerator`'s init container `frontend-check` in
+  `CrashLoopBackOff`. It performs a single `wget` against `http://frontend:80`
+  and exits non-zero if the frontend is not serving yet, so a growing backoff
+  during the first minute is expected startup noise, not a defect. It reached
+  `1/1 Running` at 46s on the clean run.
 
 ### Overlays staging and prod
 - [ ] **10.** `overlays/staging`: same structure, own namespace, own nodePort,
