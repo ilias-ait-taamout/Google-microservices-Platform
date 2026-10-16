@@ -185,9 +185,40 @@ once an Ingress replaces `frontend-external`.
 - [ ] **13.** All three environments at once: pods `Ready` in each namespace,
       three frontends responding, NetworkPolicies proven to block a forbidden
       call (test with a throwaway pod). Then `down`, then `orphans`
-- [ ] **14.** Security baseline: run `kube-score` and `checkov` against all
+- [x] **14.** Security baseline: run `kube-score` and `checkov` against all
       three rendered overlays and archive the results — the "before" picture to
       compare against in Phase 4
+
+**Task 14 done (16 Oct 2026).** Full report and raw output in
+`docs/phase2/baseline/`. kube-score 1.20.0 and checkov 3.3.29, both against
+the static renders, so no cluster and no cost.
+
+| | dev | staging | prod |
+|---|---|---|---|
+| kube-score CRITICAL | 62 | 47 | 46 |
+| kube-score WARNING | 23 | 23 | 22 |
+| checkov failed | 78 | 55 | 55 |
+| checkov passed | 1024 | 958 | 958 |
+
+The dev-to-staging delta is fully accounted for: 12 `CKV2_K8S_6` (pods with no
+associated NetworkPolicy) closed by the `network-policies` component, plus 11
+for the Deployment that `without-loadgenerator` removes (5 per-container
+checks + 6 probe/resources checks that all hit the busybox init container).
+kube-score's `Pod NetworkPolicy` goes 12 -> 0. That is the measurable version
+of "we added NetworkPolicies".
+
+**Action it produced:** kube-score flags the orphan `loadgenerator`
+NetworkPolicy in staging and prod -- *"The NetworkPolicys selector doesn't
+match any pods"*. That settles the question left open at tasks 10-11: add
+`$patch: delete` for the loadgenerator NetworkPolicy and ServiceAccount to
+both overlays, re-render, and re-run the tools to show the count drop. Done as
+a separate commit so the baseline above stays the honest "before" snapshot.
+
+Worth noting for Phase 3 CI: **checkov does not flag that orphan and
+kube-score does.** checkov reasons about each resource's own contents,
+kube-score cross-references selectors against the workloads in the same
+render. Neither is a superset of the other -- run both.
+
 - [ ] **15.** README in `kustomize/overlays/` explaining the structure and the
       choices; update `CLAUDE.md` (Phase 2 done)
 - [ ] **16.** `/commit-safe`, then PRs feature → develop → release → main with
