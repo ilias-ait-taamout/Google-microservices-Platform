@@ -50,12 +50,24 @@ echo "public=$PUBLIC_IP private=$PRIVATE_IP"
 #  --tls-san PUBLIC_IP        adds the public IP to the API server certificate.
 #                             WITHOUT THIS, kubectl from your laptop fails with
 #                             "certificate is valid for 10.0.1.x, not 13.37.x.x"
-#  --node-external-ip         so other nodes and kubectl see the right address
+#  --node-external-ip         deliberately NOT set - see the note below
 #  --write-kubeconfig-mode    644, so we can scp the kubeconfig without sudo
 #  --disable traefik          Phase 2/3 brings its own ingress controller
 #
 # Flannel's default backend is VXLAN on UDP 8472 — that is the port the
 # security group opens between nodes.
+#
+# Why --node-external-ip is absent:
+# It would advertise this node's PUBLIC IP to in-cluster clients. An agent
+# that dials that address sends a packet which leaves the VPC through the
+# Internet Gateway and arrives carrying the AGENT's own public IP as source
+# - an address the security group's self-reference rule does not match, and
+# that admin_cidr does not cover either. The packet is dropped, the k3s
+# supervisor tunnel dies, and kubectl logs / exec / port-forward stop
+# working for every pod hosted by an agent, while the cluster still reports
+# all three nodes Ready. Node-to-node traffic must stay on private IPs.
+# External kubectl access is what --tls-san above is for: it touches the
+# certificate, not routing.
 %{ if disable_traefik ~}
 DISABLE_FLAGS="--disable traefik"
 %{ else ~}
@@ -68,7 +80,6 @@ curl -sfL https://get.k3s.io | \
     --token "${k3s_token}" \
     --node-name "${node_name}" \
     --tls-san "$PUBLIC_IP" \
-    --node-external-ip "$PUBLIC_IP" \
     --write-kubeconfig-mode 644 \
     $DISABLE_FLAGS
 

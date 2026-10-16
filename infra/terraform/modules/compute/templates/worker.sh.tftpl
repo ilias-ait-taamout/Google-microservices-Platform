@@ -11,12 +11,6 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get install -y curl ca-certificates
 
-IMDS_TOKEN=$(curl -sf -X PUT "http://169.254.169.254/latest/api/token" \
-  -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
-
-PUBLIC_IP=$(curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" \
-  http://169.254.169.254/latest/meta-data/public-ipv4)
-
 # -----------------------------------------------------------------------------
 # Wait for the control plane to be listening
 # -----------------------------------------------------------------------------
@@ -50,7 +44,6 @@ curl -sfL https://get.k3s.io | \
   K3S_URL="https://${server_ip}:6443" \
   K3S_TOKEN="${k3s_token}" \
   sh -s - agent \
-    --node-name "${node_name}" \
-    --node-external-ip "$PUBLIC_IP"
+    --node-name "${node_name}"
 
 echo "=== k3s agent bootstrap finished at $(date -u) ==="

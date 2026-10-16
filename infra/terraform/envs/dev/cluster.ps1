@@ -161,13 +161,60 @@ switch ($Command) {
     'orphans' {
         Write-Host "Scanning $Region for leftovers..." -ForegroundColor Cyan
         Write-Host ""
-        $clean = $true
+        $clean     = $true
+        $unchecked = @()
+
+        # Runs one AWS query. Returns the output, or $null.
+        # Critically: distinguishes "nothing found" from "the call FAILED".
+        # A denied or errored call returns empty, which would otherwise read as
+        # "all clear" — the exact false negative that lets a resource keep billing.
+        function Invoke-Check {
+            param([string]$Label, [string[]]$AwsArgs)
+
+            # $ErrorActionPreference = 'Stop' is set at the top of this script.
+            # Under it, ANY native command that writes to stderr raises a
+            # terminating NativeCommandError - even when the command succeeded.
+            # The aws CLI writes warnings and access-denied text to stderr, so
+            # we drop to 'Continue' for the duration of the call.
+            $prevEAP = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            try {
+                $raw  = & aws @AwsArgs 2>&1
+                $code = $LASTEXITCODE
+            }
+            finally {
+                $ErrorActionPreference = $prevEAP
+            }
+
+            # 2>&1 interleaves stderr as ErrorRecord objects. Split them out so
+            # stdout stays usable and the error text stays readable.
+            $errText = ($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } |
+                        ForEach-Object { $_.ToString() }) -join ' '
+            $stdout  = $raw | Where-Object { -not ($_ -is [System.Management.Automation.ErrorRecord]) } |
+                       Where-Object { $_ -and "$_".Trim() -ne '' }
+
+            # A failed call returns nothing, which would otherwise read as
+            # "all clear" - the false negative this whole function exists to stop.
+            if ($code -ne 0) {
+                $script:unchecked += $Label
+                if ($errText -match 'AccessDenied|not authorized') {
+                    Write-Host "  ! $Label - NOT CHECKED (access denied)" -ForegroundColor Yellow
+                } else {
+                    $short = if ($errText.Length -gt 140) { $errText.Substring(0,140) + '...' } else { $errText }
+                    Write-Host "  ! $Label - NOT CHECKED ($short)" -ForegroundColor Yellow
+                }
+                return $null
+            }
+
+            return $stdout
+        }
 
         # --- EC2 instances (anything not already terminated) ---
-        $inst = aws ec2 describe-instances --profile $Profile_ --region $Region `
-            --filters "Name=instance-state-name,Values=pending,running,stopping,stopped" `
-            --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,Id:InstanceId,State:State.Name,Type:InstanceType}' `
-            --output text
+        $inst = Invoke-Check -Label "EC2 instances" -AwsArgs @(
+            'ec2','describe-instances','--profile',$Profile_,'--region',$Region,
+            '--filters','Name=instance-state-name,Values=pending,running,stopping,stopped',
+            '--query','Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,Id:InstanceId,State:State.Name,Type:InstanceType}',
+            '--output','text')
         if ($inst) {
             Write-Host "EC2 INSTANCES still alive (billing):" -ForegroundColor Red
             Write-Host $inst
@@ -177,9 +224,11 @@ switch ($Command) {
         # --- EBS volumes not attached to anything ---
         # These survive if delete_on_termination was ever false, and they bill
         # at ~0.09 EUR/GiB/month doing absolutely nothing.
-        $vols = aws ec2 describe-volumes --profile $Profile_ --region $Region `
-            --filters "Name=status,Values=available" `
-            --query 'Volumes[].{Id:VolumeId,Size:Size,Created:CreateTime}' --output text
+        $vols = Invoke-Check -Label "EBS volumes" -AwsArgs @(
+            'ec2','describe-volumes','--profile',$Profile_,'--region',$Region,
+            '--filters','Name=status,Values=available',
+            '--query','Volumes[].{Id:VolumeId,Size:Size,Created:CreateTime}',
+            '--output','text')
         if ($vols) {
             Write-Host "UNATTACHED EBS VOLUMES (billing):" -ForegroundColor Red
             Write-Host $vols
@@ -188,8 +237,10 @@ switch ($Command) {
 
         # --- Elastic IPs not associated ---
         # AWS charges for an EIP precisely when it is NOT in use.
-        $eips = aws ec2 describe-addresses --profile $Profile_ --region $Region `
-            --query 'Addresses[?AssociationId==null].{IP:PublicIp,Alloc:AllocationId}' --output text
+        $eips = Invoke-Check -Label "Elastic IPs" -AwsArgs @(
+            'ec2','describe-addresses','--profile',$Profile_,'--region',$Region,
+            '--query','Addresses[?AssociationId==null].{IP:PublicIp,Alloc:AllocationId}',
+            '--output','text')
         if ($eips) {
             Write-Host "UNASSOCIATED ELASTIC IPs (billing):" -ForegroundColor Red
             Write-Host $eips
@@ -197,18 +248,36 @@ switch ($Command) {
         }
 
         # --- Load balancers (Kubernetes creates these behind Terraform's back) ---
-        $lbs = aws elbv2 describe-load-balancers --profile $Profile_ --region $Region `
-            --query 'LoadBalancers[].{Name:LoadBalancerName,Type:Type}' --output text
+        # Needs elasticloadbalancing:DescribeLoadBalancers in the IAM policy.
+        # This is the check that matters most from Phase 2 onward: an ELB made by
+        # a Service of type LoadBalancer is invisible to Terraform and blocks
+        # `terraform destroy` on the subnets.
+        $lbs = Invoke-Check -Label "Load balancers (v2)" -AwsArgs @(
+            'elbv2','describe-load-balancers','--profile',$Profile_,'--region',$Region,
+            '--query','LoadBalancers[].{Name:LoadBalancerName,Type:Type}',
+            '--output','text')
         if ($lbs) {
             Write-Host "LOAD BALANCERS (billing, ~16 EUR/month each):" -ForegroundColor Red
             Write-Host $lbs
             $clean = $false
         }
 
+        $clbs = Invoke-Check -Label "Load balancers (classic)" -AwsArgs @(
+            'elb','describe-load-balancers','--profile',$Profile_,'--region',$Region,
+            '--query','LoadBalancerDescriptions[].LoadBalancerName',
+            '--output','text')
+        if ($clbs) {
+            Write-Host "CLASSIC LOAD BALANCERS (billing):" -ForegroundColor Red
+            Write-Host $clbs
+            $clean = $false
+        }
+
         # --- NAT gateways (we create none, but a stray one is 32 EUR/month) ---
-        $nats = aws ec2 describe-nat-gateways --profile $Profile_ --region $Region `
-            --filter "Name=state,Values=available,pending" `
-            --query 'NatGateways[].NatGatewayId' --output text
+        $nats = Invoke-Check -Label "NAT gateways" -AwsArgs @(
+            'ec2','describe-nat-gateways','--profile',$Profile_,'--region',$Region,
+            '--filter','Name=state,Values=available,pending',
+            '--query','NatGateways[].NatGatewayId',
+            '--output','text')
         if ($nats) {
             Write-Host "NAT GATEWAYS (billing, ~32 EUR/month each):" -ForegroundColor Red
             Write-Host $nats
@@ -216,9 +285,11 @@ switch ($Command) {
         }
 
         # --- VPCs tagged for this project (free, but means destroy did not finish) ---
-        $vpcs = aws ec2 describe-vpcs --profile $Profile_ --region $Region `
-            --filters "Name=tag:Project,Values=$Project" `
-            --query 'Vpcs[].VpcId' --output text
+        $vpcs = Invoke-Check -Label "Project VPC" -AwsArgs @(
+            'ec2','describe-vpcs','--profile',$Profile_,'--region',$Region,
+            '--filters',"Name=tag:Project,Values=$Project",
+            '--query','Vpcs[].VpcId',
+            '--output','text')
         if ($vpcs) {
             Write-Host "PROJECT VPC still exists (free, but destroy did not complete):" -ForegroundColor Yellow
             Write-Host $vpcs
@@ -226,11 +297,17 @@ switch ($Command) {
         }
 
         Write-Host ""
-        if ($clean) {
+        if (-not $clean) {
+            Write-Host "  LEFTOVERS FOUND - anything above is still on your bill." -ForegroundColor Red
+        }
+        elseif ($unchecked.Count -gt 0) {
+            Write-Host "  PARTIALLY CLEAN - everything checked is clear, but these" -ForegroundColor Yellow
+            Write-Host "  could not be verified: $($unchecked -join ', ')" -ForegroundColor Yellow
+            Write-Host "  Fix the IAM permissions, or check them in the console." -ForegroundColor Yellow
+        }
+        else {
             Write-Host "  CLEAN - nothing is billing in $Region." -ForegroundColor Green
             Write-Host "  Only the S3 state bucket remains, which costs a few cents." -ForegroundColor DarkGray
-        } else {
-            Write-Host "  Leftovers found. Anything above is still on your bill." -ForegroundColor Red
         }
         Write-Host ""
     }

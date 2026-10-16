@@ -1,0 +1,22 @@
+# PodDisruptionBudget: the minimum number of frontend pods Kubernetes must keep
+# running during a VOLUNTARY disruption - a `kubectl drain`, a node upgrade, a
+# cluster-autoscaler scale-down. It does NOT protect against a node crashing or
+# a pod being OOM-killed; those are involuntary and no budget applies.
+#
+# minAvailable: 1 out of 2 replicas therefore means: drain one node at a time
+# and the shop stays up; try to drain both frontend nodes at once and the second
+# drain blocks until the first pod is rescheduled.
+#
+# The selector must match the pods, not the Deployment. It stays on `app` alone
+# because includeSelectors: false keeps the overlay's own labels out of every
+# selector - the pods carry `app: frontend` plus those extra labels, so this
+# matches.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend

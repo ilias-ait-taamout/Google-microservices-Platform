@@ -1,0 +1,44 @@
+# .graphifyignore — exclusions supplémentaires au .gitignore
+# Graphify respecte déjà .gitignore (donc node_modules/, vendor/, bin/, obj/,
+# pkg/, .terraform/ sont déjà hors du graphe).
+# Ce fichier retire en plus ce qui est inutile ou généré.
+
+# --- Technos écartées par décision de projet ---------------------------------
+# Le projet utilise Kustomize : ni Helm, ni Istio.
+helm-chart/
+istio-manifests/
+
+# Manifestes générés par le pipeline de release de Google.
+release/
+
+# Outillage Google Cloud hérité, non utilisé.
+.deploystack/
+cloudbuild.yaml
+skaffold.yaml
+
+# --- Code généré --------------------------------------------------------------
+# Les stubs protobuf sont volumineux, répétitifs, et jamais écrits à la main.
+# Les fichiers .proto eux-mêmes RESTENT dans le graphe : ce sont eux qui
+# décrivent les contrats gRPC entre les 11 services.
+**/genproto/
+**/*.pb.go
+**/*_pb2.py
+**/*_pb2_grpc.py
+**/*_pb.js
+**/*_grpc_pb.js
+**/*.g.cs
+**/demo.v1alpha1/
+
+# --- Binaire et sorties -------------------------------------------------------
+graphify-out/
+**/.gradle/
+**/build/
+**/target/
+**/__pycache__/
+
+# --- Médias -------------------------------------------------------------------
+docs/img/
+**/*.png
+**/*.jpg
+**/*.gif
+**/*.svg
