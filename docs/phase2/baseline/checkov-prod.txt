@@ -1,170 +1,170 @@
 kubernetes scan results:
 
-Passed checks: 958, Failed checks: 55, Skipped checks: 0
+Passed checks: 956, Failed checks: 55, Skipped checks: 0
 
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.adservice
-	File: docs/phase2/prod-render.yaml:325-384
+	File: docs/phase2/prod-render.yaml:316-375
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.adservice
-	File: docs/phase2/prod-render.yaml:325-384
+	File: docs/phase2/prod-render.yaml:316-375
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.adservice
-	File: docs/phase2/prod-render.yaml:325-384
+	File: docs/phase2/prod-render.yaml:316-375
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.adservice
-	File: docs/phase2/prod-render.yaml:325-384
+	File: docs/phase2/prod-render.yaml:316-375
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.adservice
-	File: docs/phase2/prod-render.yaml:325-384
+	File: docs/phase2/prod-render.yaml:316-375
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.cartservice
-	File: docs/phase2/prod-render.yaml:385-443
+	File: docs/phase2/prod-render.yaml:376-434
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.cartservice
-	File: docs/phase2/prod-render.yaml:385-443
+	File: docs/phase2/prod-render.yaml:376-434
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.cartservice
-	File: docs/phase2/prod-render.yaml:385-443
+	File: docs/phase2/prod-render.yaml:376-434
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.cartservice
-	File: docs/phase2/prod-render.yaml:385-443
+	File: docs/phase2/prod-render.yaml:376-434
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.cartservice
-	File: docs/phase2/prod-render.yaml:385-443
+	File: docs/phase2/prod-render.yaml:376-434
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.checkoutservice
-	File: docs/phase2/prod-render.yaml:444-510
+	File: docs/phase2/prod-render.yaml:435-501
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.checkoutservice
-	File: docs/phase2/prod-render.yaml:444-510
+	File: docs/phase2/prod-render.yaml:435-501
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.checkoutservice
-	File: docs/phase2/prod-render.yaml:444-510
+	File: docs/phase2/prod-render.yaml:435-501
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.checkoutservice
-	File: docs/phase2/prod-render.yaml:444-510
+	File: docs/phase2/prod-render.yaml:435-501
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.checkoutservice
-	File: docs/phase2/prod-render.yaml:444-510
+	File: docs/phase2/prod-render.yaml:435-501
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.currencyservice
-	File: docs/phase2/prod-render.yaml:511-569
+	File: docs/phase2/prod-render.yaml:502-560
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.currencyservice
-	File: docs/phase2/prod-render.yaml:511-569
+	File: docs/phase2/prod-render.yaml:502-560
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.currencyservice
-	File: docs/phase2/prod-render.yaml:511-569
+	File: docs/phase2/prod-render.yaml:502-560
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.currencyservice
-	File: docs/phase2/prod-render.yaml:511-569
+	File: docs/phase2/prod-render.yaml:502-560
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.currencyservice
-	File: docs/phase2/prod-render.yaml:511-569
+	File: docs/phase2/prod-render.yaml:502-560
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.emailservice
-	File: docs/phase2/prod-render.yaml:570-629
+	File: docs/phase2/prod-render.yaml:561-620
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.emailservice
-	File: docs/phase2/prod-render.yaml:570-629
+	File: docs/phase2/prod-render.yaml:561-620
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.emailservice
-	File: docs/phase2/prod-render.yaml:570-629
+	File: docs/phase2/prod-render.yaml:561-620
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.emailservice
-	File: docs/phase2/prod-render.yaml:570-629
+	File: docs/phase2/prod-render.yaml:561-620
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.emailservice
-	File: docs/phase2/prod-render.yaml:570-629
+	File: docs/phase2/prod-render.yaml:561-620
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.frontend
-	File: docs/phase2/prod-render.yaml:630-715
+	File: docs/phase2/prod-render.yaml:621-706
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.frontend
-	File: docs/phase2/prod-render.yaml:630-715
+	File: docs/phase2/prod-render.yaml:621-706
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.frontend
-	File: docs/phase2/prod-render.yaml:630-715
+	File: docs/phase2/prod-render.yaml:621-706
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.frontend
-	File: docs/phase2/prod-render.yaml:630-715
+	File: docs/phase2/prod-render.yaml:621-706
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.frontend
-	File: docs/phase2/prod-render.yaml:630-715
+	File: docs/phase2/prod-render.yaml:621-706
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.paymentservice
-	File: docs/phase2/prod-render.yaml:716-773
+	File: docs/phase2/prod-render.yaml:707-764
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.paymentservice
-	File: docs/phase2/prod-render.yaml:716-773
+	File: docs/phase2/prod-render.yaml:707-764
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.paymentservice
-	File: docs/phase2/prod-render.yaml:716-773
+	File: docs/phase2/prod-render.yaml:707-764
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.paymentservice
-	File: docs/phase2/prod-render.yaml:716-773
+	File: docs/phase2/prod-render.yaml:707-764
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.paymentservice
-	File: docs/phase2/prod-render.yaml:716-773
+	File: docs/phase2/prod-render.yaml:707-764
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.productcatalogservice
-	File: docs/phase2/prod-render.yaml:774-831
+	File: docs/phase2/prod-render.yaml:765-822
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.productcatalogservice
-	File: docs/phase2/prod-render.yaml:774-831
+	File: docs/phase2/prod-render.yaml:765-822
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.productcatalogservice
-	File: docs/phase2/prod-render.yaml:774-831
+	File: docs/phase2/prod-render.yaml:765-822
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.productcatalogservice
-	File: docs/phase2/prod-render.yaml:774-831
+	File: docs/phase2/prod-render.yaml:765-822
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.productcatalogservice
-	File: docs/phase2/prod-render.yaml:774-831
+	File: docs/phase2/prod-render.yaml:765-822
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.recommendationservice
-	File: docs/phase2/prod-render.yaml:832-893
+	File: docs/phase2/prod-render.yaml:823-884
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.recommendationservice
-	File: docs/phase2/prod-render.yaml:832-893
+	File: docs/phase2/prod-render.yaml:823-884
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.recommendationservice
-	File: docs/phase2/prod-render.yaml:832-893
+	File: docs/phase2/prod-render.yaml:823-884
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.recommendationservice
-	File: docs/phase2/prod-render.yaml:832-893
+	File: docs/phase2/prod-render.yaml:823-884
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.recommendationservice
-	File: docs/phase2/prod-render.yaml:832-893
+	File: docs/phase2/prod-render.yaml:823-884
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.redis-cart
-	File: docs/phase2/prod-render.yaml:894-952
+	File: docs/phase2/prod-render.yaml:885-943
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.redis-cart
-	File: docs/phase2/prod-render.yaml:894-952
+	File: docs/phase2/prod-render.yaml:885-943
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.redis-cart
-	File: docs/phase2/prod-render.yaml:894-952
+	File: docs/phase2/prod-render.yaml:885-943
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.redis-cart
-	File: docs/phase2/prod-render.yaml:894-952
+	File: docs/phase2/prod-render.yaml:885-943
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.redis-cart
-	File: docs/phase2/prod-render.yaml:894-952
+	File: docs/phase2/prod-render.yaml:885-943
 Check: CKV_K8S_43: "Image should use digest"
 	FAILED for resource: Deployment.prod.shippingservice
-	File: docs/phase2/prod-render.yaml:953-1010
+	File: docs/phase2/prod-render.yaml:944-1001
 Check: CKV_K8S_38: "Ensure that Service Account Tokens are only mounted where necessary"
 	FAILED for resource: Deployment.prod.shippingservice
-	File: docs/phase2/prod-render.yaml:953-1010
+	File: docs/phase2/prod-render.yaml:944-1001
 Check: CKV_K8S_15: "Image Pull Policy should be Always"
 	FAILED for resource: Deployment.prod.shippingservice
-	File: docs/phase2/prod-render.yaml:953-1010
+	File: docs/phase2/prod-render.yaml:944-1001
 Check: CKV_K8S_40: "Containers should run as a high UID to avoid host conflict"
 	FAILED for resource: Deployment.prod.shippingservice
-	File: docs/phase2/prod-render.yaml:953-1010
+	File: docs/phase2/prod-render.yaml:944-1001
 Check: CKV_K8S_31: "Ensure that the seccomp profile is set to docker/default or runtime/default"
 	FAILED for resource: Deployment.prod.shippingservice
-	File: docs/phase2/prod-render.yaml:953-1010
+	File: docs/phase2/prod-render.yaml:944-1001
 

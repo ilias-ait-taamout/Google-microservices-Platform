@@ -44,6 +44,10 @@ labels:
 
 patches:
   - path: frontend-external-nodeport.yaml
+  # Removes the two loadgenerator orphans without-loadgenerator leaves
+  # behind. Added after task 14: kube-score flags the dangling
+  # NetworkPolicy. See docs/phase2/baseline/README.md.
+  - path: delete-loadgenerator-orphans.yaml
 
 # Pin the two third-party images the base leaves floating. Google's 11
 # microservice images stay at v0.10.5.

@@ -1,12 +1,12 @@
 # Phase 2 task 14 — security baseline
 
-Recorded 16 October 2026, against the three rendered overlays in
+Recorded 16 October 2026 against the three rendered overlays in
 `docs/phase2/{dev,staging,prod}-render.yaml`. **No cluster involved**: both
 tools read static YAML, so this is reproducible at any time without paying for
 EC2.
 
-This is the **"before" picture**. Phase 4 (OPA Gatekeeper, Falco, hardened
-`securityContext`) will be measured against these numbers.
+This is the **"before" picture for Phase 4** (OPA Gatekeeper, Falco, hardened
+`securityContext`), which will be measured against these numbers.
 
 ## How to reproduce
 
@@ -15,25 +15,23 @@ kube-score score docs/phase2/<env>-render.yaml
 checkov -f docs/phase2/<env>-render.yaml --framework kubernetes --compact --quiet --skip-download
 ```
 
-Versions used: kube-score 1.20.0, checkov 3.3.29. Both ran on Linux; checkov
-has a large Python dependency tree and is meant to live in CI (Phase 3), not on
-a workstation. `--skip-download` suppresses an attempt to fetch online
-guidelines, which fails behind a proxy and buries the report in a traceback.
-Both tools exit non-zero when they find anything — that is expected here and
-must not be read as a tool failure.
+kube-score 1.20.0, checkov 3.3.29, kustomize 5.8.1 (the version embedded in
+kubectl 1.36.1, so a standalone `kustomize build` and `kubectl kustomize` agree).
+Both tools ran on Linux; checkov has a large Python dependency tree and belongs
+in CI (Phase 3), not on a workstation. `--skip-download` suppresses an attempt
+to fetch online guidelines, which fails behind a proxy and buries the report in
+a traceback. **Both tools exit non-zero when they find anything** — expected
+here, and not to be read as a tool failure.
 
-## Headline numbers
+## Current numbers
 
 | | dev | staging | prod |
 |---|---|---|---|
-| kube-score CRITICAL | **62** | 47 | **46** |
+| kube-score CRITICAL | **62** | 46 | **45** |
 | kube-score WARNING | 23 | 23 | 22 |
 | checkov failed | **78** | 55 | 55 |
-| checkov passed | 1024 | 958 | 958 |
-
-staging and prod are identical to checkov; the PodDisruptionBudget is the only
-difference between them and it moves one kube-score CRITICAL
-(`Deployment has PodDisruptionBudget`, 11 -> 10).
+| checkov passed | 1024 | 956 | 956 |
+| resources | 36 | 46 | 47 |
 
 ## What the components bought, measured
 
@@ -44,17 +42,19 @@ The whole dev-to-staging delta is explained, with nothing left over.
 | Cause | Count |
 |---|---|
 | `CKV2_K8S_6` pods lacking an associated NetworkPolicy — closed by `network-policies` | 12 |
-| the 5 per-container checks, for the deleted 12th Deployment | 5 |
-| `CKV_K8S_8/9/10/11/12/13` — probes and resources, all on `Deployment.dev.loadgenerator` | 6 |
+| the 5 per-container checks, for the Deployment `without-loadgenerator` removes | 5 |
+| `CKV_K8S_8/9/10/11/12/13` probes and resources, all on `Deployment.dev.loadgenerator` | 6 |
 | **total** | **23** |
 
-**kube-score: `Pod NetworkPolicy` goes 12 -> 0.** One CRITICAL per uncovered
-pod in dev, none in staging or prod.
+**kube-score `Pod NetworkPolicy`: 12 -> 0.** One CRITICAL per uncovered pod in
+dev, none in staging or prod.
 
 That is the defensible version of "we added NetworkPolicies": not a claim, a
-count that drops to zero and whose residue is fully accounted for.
+counter that falls to zero and whose residue is fully accounted for.
 
-## One finding to act on
+## The measure -> fix -> re-measure loop
+
+The first run of this baseline turned up a finding worth acting on:
 
 ```
 networking.k8s.io/v1/NetworkPolicy loadgenerator in prod    CRITICAL
@@ -62,24 +62,40 @@ networking.k8s.io/v1/NetworkPolicy loadgenerator in prod    CRITICAL
         · The NetworkPolicys selector doesn't match any pods
 ```
 
-This settles the question left open when the overlays were written.
 `components/without-loadgenerator` deletes the **Deployment** only, so the
 loadgenerator `NetworkPolicy` (from `components/network-policies`) and its
-`ServiceAccount` (from `base/`) survive in staging and prod as orphans. A tool
-flags the policy, so both should go: add two `$patch: delete` entries to the
-staging and prod overlays. Tracked as the follow-up to this task.
+`ServiceAccount` (from `base/`) survived in staging and prod as orphans. Both
+are now removed by `delete-loadgenerator-orphans.yaml` in each overlay, using
+`$patch: delete`. That works because kustomize applies a kustomization's own
+`patches` **after** its `components`, so the NetworkPolicy exists by the time
+the patch runs.
 
-Note that **checkov does not flag it and kube-score does** — checkov reasons
-about each resource's own contents, kube-score cross-references selectors
-against the workloads in the same render. Neither is a superset of the other,
-which is the argument for running both in CI.
+| | staging before | staging after | prod before | prod after |
+|---|---|---|---|---|
+| resources | 48 | **46** | 49 | **47** |
+| NetworkPolicy | 13 | **12** | 13 | **12** |
+| ServiceAccount | 11 | **10** | 11 | **10** |
+| kube-score CRITICAL | 47 | **46** | 46 | **45** |
+| checkov failed | 55 | **55** | 55 | **55** |
+| checkov passed | 958 | **956** | 958 | **956** |
+
+Read that last pair of rows carefully, because it is the most instructive
+result in this whole report. The fix removed **one kube-score CRITICAL and
+zero checkov failures**, and *lowered* checkov's passed count by 2 — the two
+checks that the now-deleted ServiceAccount used to pass.
+
+In other words: **checkov never saw the problem.** It evaluates each resource
+against rules about its own contents, and a NetworkPolicy selecting nothing is
+a perfectly well-formed NetworkPolicy. kube-score cross-references selectors
+against the workloads present in the same render, so it can see that nothing
+matches. Neither tool is a superset of the other, and a rising "passed" count
+is not by itself evidence of improvement. Both go in the Phase 3 CI.
 
 ## Real gaps, to close in Phase 4
 
-Each of these is 11 occurrences in staging/prod (12 in dev) — one per
-Deployment. They come from Google's `base/`, which we do not modify
-(decision C), so they must be fixed by an overlay patch or enforced by an
-admission policy.
+11 occurrences each in staging/prod (12 in dev) — one per Deployment. They
+come from Google's `base/`, which we do not modify (decision C), so they must
+be fixed by an overlay patch or enforced by an admission policy.
 
 | Finding | Tool | Why it matters |
 |---|---|---|
