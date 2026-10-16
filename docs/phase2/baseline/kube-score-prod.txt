@@ -1,0 +1,428 @@
+apps/v1/Deployment adservice in prod                                          💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment cartservice in prod                                        💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+apps/v1/Deployment checkoutservice in prod                                    💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+apps/v1/Deployment currencyservice in prod                                    💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment emailservice in prod                                       💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment frontend in prod                                           💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Pod Probes Identical
+        · Container has the same readiness and liveness probe
+            Using the same probe for liveness and readiness is very likely
+            dangerous. It's generally better to avoid re-using the same probe.
+            More information: https://github.com/zegl/kube-score/blob/master/README_PROBES.md
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment paymentservice in prod                                     💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+apps/v1/Deployment productcatalogservice in prod                              💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment recommendationservice in prod                              💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment redis-cart in prod                                         💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · redis -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · redis -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · redis -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · redis -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · redis -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [CRITICAL] Pod Probes Identical
+        · Container has the same readiness and liveness probe
+            Using the same probe for liveness and readiness is very likely
+            dangerous. It's generally better to avoid re-using the same probe.
+            More information: https://github.com/zegl/kube-score/blob/master/README_PROBES.md
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+apps/v1/Deployment shippingservice in prod                                    💥
+    path=docs/phase2/prod-render.yaml
+    [CRITICAL] Container Security Context User Group ID
+        · server -> The container is running with a low user ID
+            A userid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsUser to a value > 10000
+        · server -> The container running with a low group ID
+            A groupid above 10 000 is recommended to avoid conflicts with the
+            host. Set securityContext.runAsGroup to a value > 10000
+    [CRITICAL] Container Image Pull Policy
+        · server -> ImagePullPolicy is not set to Always
+            It's recommended to always set the ImagePullPolicy to Always, to
+            make sure that the imagePullSecrets are always correct, and to
+            always get the image you want.
+    [CRITICAL] Container Ephemeral Storage Request and Limit
+        · server -> Ephemeral Storage limit is not set
+            Resource limits are recommended to avoid resource DDOS. Set
+            resources.limits.ephemeral-storage
+        · server -> Ephemeral Storage request is not set
+            Resource requests are recommended to make sure the application can
+            start and run without crashing. Set
+            resource.requests.ephemeral-storage
+    [WARNING] Deployment Replicas
+        · Deployment few replicas
+            Deployments targeted by Services are recommended to have at least 2
+            replicas to prevent unwanted downtime.
+    [CRITICAL] Deployment has PodDisruptionBudget
+        · No matching PodDisruptionBudget was found
+            It's recommended to define a PodDisruptionBudget to avoid
+            unexpected downtime during Kubernetes maintenance operations, such
+            as when draining a node.
+    [WARNING] Deployment has host PodAntiAffinity
+        · Deployment does not have a host podAntiAffinity set
+            It's recommended to set a podAntiAffinity that stops multiple pods
+            from a deployment from being scheduled on the same node. This
+            increases availability in case the node becomes unavailable.
+networking.k8s.io/v1/NetworkPolicy adservice in prod                          ✅
+networking.k8s.io/v1/NetworkPolicy cartservice in prod                        ✅
+networking.k8s.io/v1/NetworkPolicy checkoutservice in prod                    ✅
+networking.k8s.io/v1/NetworkPolicy currencyservice in prod                    ✅
+networking.k8s.io/v1/NetworkPolicy deny-all in prod                           ✅
+networking.k8s.io/v1/NetworkPolicy emailservice in prod                       ✅
+networking.k8s.io/v1/NetworkPolicy frontend in prod                           ✅
+networking.k8s.io/v1/NetworkPolicy paymentservice in prod                     ✅
+networking.k8s.io/v1/NetworkPolicy productcatalogservice in prod              ✅
+networking.k8s.io/v1/NetworkPolicy recommendationservice in prod              ✅
+networking.k8s.io/v1/NetworkPolicy redis-cart in prod                         ✅
+networking.k8s.io/v1/NetworkPolicy shippingservice in prod                    ✅
+policy/v1/PodDisruptionBudget frontend in prod                                ✅
+v1/Service adservice in prod                                                  ✅
+v1/Service cartservice in prod                                                ✅
+v1/Service checkoutservice in prod                                            ✅
+v1/Service currencyservice in prod                                            ✅
+v1/Service emailservice in prod                                               ✅
+v1/Service frontend in prod                                                   ✅
+v1/Service frontend-external in prod                                          🤔
+    path=docs/phase2/prod-render.yaml
+    [WARNING] Service Type
+        · The service is of type NodePort
+            NodePort services should be avoided as they are insecure, and can
+            not be used together with NetworkPolicies. LoadBalancers or use of
+            an Ingress is recommended over NodePorts.
+v1/Service paymentservice in prod                                             ✅
+v1/Service productcatalogservice in prod                                      ✅
+v1/Service recommendationservice in prod                                      ✅
+v1/Service redis-cart in prod                                                 ✅
+v1/Service shippingservice in prod                                            ✅

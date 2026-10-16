@@ -82,3 +82,18 @@ new_user_credentials.csv
 .env
 .env.*
 !.env.example
+
+# Graphify — generated knowledge graph, re-buildable with /graphify
+graphify-out/
+
+# =============================================================================
+# Claude Code — LOCAL ONLY, jamais commité (décision du 13/10/2026)
+# =============================================================================
+# Sauvegarde : Project claude.ai → claude/08-CLAUDE-CODE-SETUP-BACKUP.md
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+
+
+# Claude desktop app scratch output, not part of the project
+Claude outputs/

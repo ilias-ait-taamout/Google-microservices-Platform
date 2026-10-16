@@ -1,0 +1,23 @@
+# components/without-loadgenerator deletes the loadgenerator DEPLOYMENT only.
+# Its ServiceAccount (from base/) and its NetworkPolicy (from
+# components/network-policies) survive, and kube-score flags the policy:
+#   [CRITICAL] NetworkPolicy targets Pod
+#       The NetworkPolicys selector doesn't match any pods
+# An unused ServiceAccount is a smaller version of the same problem: a token
+# that exists for nothing.
+#
+# `$patch: delete` removes a resource the accumulation already produced. It
+# works here because kustomize applies the parent kustomization's `patches`
+# AFTER its `components`, so the NetworkPolicy exists by the time this runs.
+# Identifying a resource takes apiVersion + kind + name, nothing more.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: loadgenerator
+$patch: delete
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: loadgenerator
+$patch: delete
