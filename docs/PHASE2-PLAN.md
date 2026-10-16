@@ -207,20 +207,54 @@ checks + 6 probe/resources checks that all hit the busybox init container).
 kube-score's `Pod NetworkPolicy` goes 12 -> 0. That is the measurable version
 of "we added NetworkPolicies".
 
-**Action it produced:** kube-score flags the orphan `loadgenerator`
-NetworkPolicy in staging and prod -- *"The NetworkPolicys selector doesn't
-match any pods"*. That settles the question left open at tasks 10-11: add
-`$patch: delete` for the loadgenerator NetworkPolicy and ServiceAccount to
-both overlays, re-render, and re-run the tools to show the count drop. Done as
-a separate commit so the baseline above stays the honest "before" snapshot.
+**Action it produced, and carried out** (commit after `7ce56de6`, which keeps
+the "before" snapshot in history): kube-score flagged the orphan
+`loadgenerator` NetworkPolicy in staging and prod -- *"The NetworkPolicys
+selector doesn't match any pods"*. That settled the question left open at
+tasks 10-11. `delete-loadgenerator-orphans.yaml` in each overlay now removes
+the NetworkPolicy and the unused ServiceAccount with `$patch: delete`, which
+works because kustomize applies a kustomization's own `patches` **after** its
+`components`.
+
+| | staging before | after | prod before | after |
+|---|---|---|---|---|
+| resources | 48 | **46** | 49 | **47** |
+| NetworkPolicy | 13 | **12** | 13 | **12** |
+| ServiceAccount | 11 | **10** | 11 | **10** |
+| kube-score CRITICAL | 47 | **46** | 46 | **45** |
+| checkov failed | 55 | **55** | 55 | **55** |
+| checkov passed | 958 | **956** | 958 | **956** |
+
+The last two rows are the instructive part: the fix removed one kube-score
+CRITICAL and **zero** checkov failures, and *lowered* checkov's passed count
+by 2 -- the checks the deleted ServiceAccount used to pass. checkov never saw
+the problem, because a NetworkPolicy selecting nothing is a perfectly
+well-formed NetworkPolicy; only kube-score cross-references selectors against
+the workloads in the render. A rising "passed" count is therefore not by
+itself evidence of improvement.
 
 Worth noting for Phase 3 CI: **checkov does not flag that orphan and
 kube-score does.** checkov reasons about each resource's own contents,
 kube-score cross-references selectors against the workloads in the same
 render. Neither is a superset of the other -- run both.
 
-- [ ] **15.** README in `kustomize/overlays/` explaining the structure and the
+- [x] **15.** README in `kustomize/overlays/` explaining the structure and the
       choices; update `CLAUDE.md` (Phase 2 done)
+
+**Task 15 done (16 Oct 2026).** `kustomize/overlays/README.md` is the entry
+point for a reader: the three decisions (A/B/C), a table of what differs
+between the environments, render and deploy commands, and a section on *why*
+each pattern was chosen rather than only what it does -- `labels` with
+`includeSelectors: false` and the immutability of Deployment selectors,
+`components:` and their ordering relative to `patches:`, the `replicas`
+transformer versus a patch, why only the frontend scales and why `redis-cart`
+must not, and why the nodePorts are fixed rather than auto-allocated. Plus a
+"deliberately not done" section, so the gaps read as decisions rather than
+oversights.
+
+`CLAUDE.md` current-state section refreshed: 13 of 16 tasks done, `staging`
+and `prod` render-verified but never applied, tasks 13 and 16 remaining.
+
 - [ ] **16.** `/commit-safe`, then PRs feature → develop → release → main with
       merge commits, and tag `phase2-v1.0.0`
 
