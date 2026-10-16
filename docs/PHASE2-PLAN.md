@@ -182,9 +182,84 @@ its own NodePort patch (decision B). The component becomes useful in Phase 3,
 once an Ingress replaces `frontend-external`.
 
 ### Validation and close
-- [ ] **13.** All three environments at once: pods `Ready` in each namespace,
+- [x] **13.** All three environments at once: pods `Ready` in each namespace,
       three frontends responding, NetworkPolicies proven to block a forbidden
       call (test with a throwaway pod). Then `down`, then `orphans`
+
+**Task 13 done (16 Oct 2026) — the three environments validated together on a
+live cluster.**
+
+| Check | Result |
+|---|---|
+| three environments at once | **35 pods** `Running`: 12 dev, 11 staging, 12 prod |
+| probes vs `deny-all` | **pass** |
+| capacity per node | **73 % CPU on each of the three** |
+| three frontends | 30080, 30081, 30082 -> three `200` |
+| NetworkPolicy blocks | **proven** |
+| namespace isolation | **proven** |
+
+### The open question is answered: the probes are not blocked
+
+All 11 staging pods reached `1/1 Running` in 32 seconds with `deny-all` active.
+k3s's embedded kube-router-based policy controller **exempts traffic
+originating on the local node**, so the kubelet's native `grpc:` / `httpGet:` /
+`tcpSocket:` probes pass through a `deny-all` with no explicit ingress rule.
+No overlay fix was needed.
+
+Worth recording as CNI-dependent behaviour, not a Kubernetes guarantee: on a
+cluster running Calico in a stricter configuration the result could be the
+opposite, and a naive `deny-all` would then break the pod lifecycle itself.
+
+### Capacity confirmed per node
+
+1470m (**73 %**) of CPU requests on each of the three nodes -- the scheduler
+spread the load almost perfectly, so the reservation noted at task 12 (74 %
+cluster-wide can still hide one saturated node) did not materialise. Memory
+34 % / 32 % / 16 %; the third is the `m7i-flex.large` server with 8 GiB against
+4 GiB on the agents. Limits sit at 116-141 %, which is ordinary overcommit:
+`requests` is what the scheduler reserves, `limits` what a pod may burst to.
+
+### NetworkPolicy enforcement, proven with a controlled experiment
+
+| Test | Namespace | Label | Target | Result |
+|---|---|---|---|---|
+| positive | `staging` | `app=cartservice` | `redis-cart:6379` | **exit 0** |
+| negative | `staging` | `app=emailservice` | `redis-cart:6379` | exit 1 |
+| cross-namespace | `dev` | `app=cartservice` | `redis-cart.staging:6379` | exit 1 |
+
+`redis-cart`'s policy admits `app: cartservice` only.
+
+The decisive evidence is the negative pod's DNS lookup: it resolved
+`redis-cart.staging.svc.cluster.local` to `10.43.225.69`. Egress and DNS work
+in that pod -- its `emailservice` policy opens all egress -- and it knows the
+service IP, yet the TCP connect fails. The only remaining explanation is
+`redis-cart`'s **ingress** rule. Without that lookup, a failure could have been
+a severed egress rather than a blocked ingress.
+
+The cross-namespace test is the cleanest of the three: the **same** label that
+had just succeeded, with only the namespace changed. It fails, so it is not the
+label -- it is that staging's `podSelector`s carry no `namespaceSelector`,
+which means "same namespace only".
+
+Note the asymmetry, which is the pedagogical value of decision A: in the other
+direction it would pass. `dev` has no NetworkPolicy at all, so a staging pod
+reaches dev's services freely. Namespace isolation exists only where it was
+explicitly installed.
+
+### Method note worth keeping
+
+The first three attempts at the NetworkPolicy test all returned `BLOCKED`,
+**including the positive control**. Three causes were advanced and all three
+were wrong -- among them "busybox has no `nc -z`", which `nc`'s own usage output
+disproved. The real cause was `kubectl run --rm -i`, which deletes the pod
+before its output is collected, so even stderr was lost. The fix was a
+persistent pod plus `kubectl exec`.
+
+Without a positive control the conclusion "the policies block" would have been
+reached from a test that measured nothing -- and it would have been right by
+accident. A negative result is only evidence when a positive control proves the
+measuring instrument works.
+
 - [x] **14.** Security baseline: run `kube-score` and `checkov` against all
       three rendered overlays and archive the results — the "before" picture to
       compare against in Phase 4
@@ -255,7 +330,7 @@ oversights.
 `CLAUDE.md` current-state section refreshed: 13 of 16 tasks done, `staging`
 and `prod` render-verified but never applied, tasks 13 and 16 remaining.
 
-- [ ] **16.** `/commit-safe`, then PRs feature → develop → release → main with
+- [x] **16.** `/commit-safe`, then PRs feature → develop → release → main with
       merge commits, and tag `phase2-v1.0.0`
 
 ---
