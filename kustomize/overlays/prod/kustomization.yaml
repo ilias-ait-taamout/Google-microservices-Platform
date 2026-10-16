@@ -1,0 +1,59 @@
+# Overlay prod — Online Boutique in namespace `prod` on the shared k3s cluster.
+# Google's base/ and components/ are consumed as-is (decision C); every
+# difference is below.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - namespace.yaml
+  - frontend-pdb.yaml
+
+# Same two components as staging, for the same reasons - see
+# overlays/staging/kustomization.yaml for the full note on what a Component is
+# and on the two loadgenerator orphans it leaves behind.
+components:
+  - ../../components/without-loadgenerator
+  - ../../components/network-policies
+
+namespace: prod
+
+# `labels` rather than the deprecated `commonLabels`: selectors are immutable
+# on Deployments, so they must never carry labels we might change later.
+# includeSelectors: false also keeps `environment` out of the NetworkPolicy
+# podSelectors and out of the PodDisruptionBudget selector, all of which match
+# on `app` alone and would stop matching otherwise.
+labels:
+  - pairs:
+      environment: prod
+      app.kubernetes.io/part-of: online-boutique
+    includeSelectors: false
+    includeTemplates: true
+
+# The `replicas` transformer, rather than a strategic-merge patch: it targets a
+# workload by name and changes only that one field, so there is no patch file to
+# keep in sync with the base.
+#
+# ONLY the frontend is scaled. It is the single stateless HTTP entry point, so
+# it is the only one where a second replica buys anything observable. Scaling
+# the 10 gRPC backends would add ~1200m CPU of requests for no demonstrable
+# gain and would leave pods Pending - see the capacity table in
+# docs/PHASE2-PLAN.md. redis-cart is deliberately excluded: it is a single
+# in-memory instance with no replication, so a second replica would serve a
+# second, divergent cart store.
+replicas:
+  - name: frontend
+    count: 2
+
+patches:
+  - path: frontend-external-nodeport.yaml
+
+# Pin the two third-party images the base leaves floating. Google's 11
+# microservice images stay at v0.10.5. The busybox entry is a no-op here, as in
+# staging: its only container was the deleted loadgenerator init container. Kept
+# so the three overlays stay symmetrical.
+images:
+  - name: redis
+    newTag: 7.4-alpine
+  - name: busybox
+    newTag: "1.37"

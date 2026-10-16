@@ -1,0 +1,13 @@
+# LoadBalancer -> NodePort. The SG opens 30000-32767 to admin_cidr but not 80.
+# Ports merge on `port`, so name: http and targetPort: 8080 are kept from base.
+# 30081 so dev (30080), staging (30081) and prod (30082) can coexist: a nodePort
+# is cluster-wide, it is not scoped by namespace.
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-external
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      nodePort: 30081

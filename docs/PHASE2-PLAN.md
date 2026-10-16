@@ -92,15 +92,68 @@ One real defect was found and fixed on the way, and one false alarm:
   `1/1 Running` at 46s on the clean run.
 
 ### Overlays staging and prod
-- [ ] **10.** `overlays/staging`: same structure, own namespace, own nodePort,
+- [x] **10.** `overlays/staging`: same structure, own namespace, own nodePort,
       plus the `without-loadgenerator` and `network-policies` components
-- [ ] **11.** `overlays/prod`: **2 replicas on the frontend only** (not the 11
+
+**Task 10 render verified (15 Oct 2026).** 48 resources: 11 Deployments,
+12 Services, 11 ServiceAccounts, 13 NetworkPolicies, 1 Namespace. All 47
+namespaced resources in `staging`. `frontend-external` is
+`NodePort 80:30081 -> 8080`. Every NetworkPolicy `podSelector` and every
+`ingress.from.podSelector` still matches on `app` alone, so
+`includeSelectors: false` did its job. Requests total **1270m / 1112Mi** --
+exactly the figure predicted in the capacity table above.
+
+Two deliberate orphans remain, to be settled in task 14: the `loadgenerator`
+ServiceAccount (from the base) and the `loadgenerator` NetworkPolicy (from the
+component). `without-loadgenerator` deletes the Deployment only. The
+`busybox` entry in `images:` is also a no-op in staging, since the only
+busybox container was the deleted Deployment's init container; it is kept so
+the three overlays stay symmetrical.
+
+**Still unproven:** whether the `deny-all` NetworkPolicy blocks the kubelet's
+native `grpc:` / `httpGet:` / `tcpSocket:` probes, which originate from the
+node rather than from a pod and are allowed by no rule. If they are blocked,
+the backend pods never become `Ready`. Writing the prod overlay first is fine
+-- it uses the same components, so the answer applies identically to both --
+but tasks 10 and 11 cannot be called done until task 13 has run them on the
+cluster.
+
+- [x] **11.** `overlays/prod`: **2 replicas on the frontend only** (not the 11
       services), the `without-loadgenerator` and `network-policies`
       components, and a PodDisruptionBudget on the frontend
       *(a PDB guarantees a minimum number of pods stay alive during maintenance)*
-- [ ] **12.** **Capacity check**: sum the cpu/memory `requests` across all three
+- [x] **12.** **Capacity check**: sum the cpu/memory `requests` across all three
       namespaces and compare against what the nodes actually have free.
       Pre-computed below; confirm it against `kubectl describe nodes` in task 13
+
+**Task 11 render verified (15 Oct 2026).** 49 resources, all 48 namespaced
+ones in `prod`. `frontend` at `replicas: 2`; every other Deployment leaves the
+field absent, so the API server defaults it to 1 -- which also means a future
+HPA would not fight the manifest. `frontend-external` is
+`NodePort 80:30082 -> 8080`. PDB `frontend`, `policy/v1`,
+`minAvailable: 1`, selector `app: frontend`. Every selector in the render
+(Deployment, NetworkPolicy, NetworkPolicy ingress-from, PDB) still matches on
+`app` alone. Requests **1370m / 1176Mi** -- exactly as predicted.
+
+**Task 12 done (15 Oct 2026), measured from the three renders rather than
+estimated:**
+
+| env | resources | Deployments | pods | CPU requests | memory requests |
+|---|---|---|---|---|---|
+| dev | 36 | 12 | 12 | 1570m | 1368Mi |
+| staging | 48 | 11 | 11 | 1270m | 1112Mi |
+| prod | 49 | 11 | 12 | 1370m | 1176Mi |
+| **total** | | | **35** | **4210m** | **3656Mi** |
+
+3 nodes x 2 vCPU = 6000m, with roughly 300m taken by the k3s system pods, so
+about 5700m allocatable: the three namespaces ask for **74 %** of it, leaving
+~1500m. Memory is nowhere near a constraint (3656Mi of ~15 GiB). The figures
+land exactly on the 13 Oct estimate below, so the model was sound.
+
+Still to confirm against the cluster in task 13 with
+`kubectl describe nodes`: per-node allocatable differs slightly from
+2000m, and the scheduler packs per node, not per cluster -- 74 % cluster-wide
+can still leave one node unable to fit a particular pod.
 
 ### Capacity (computed 13 Oct 2026, from `docs/phase2/REFERENCE.md`)
 

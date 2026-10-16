@@ -1,0 +1,54 @@
+# Overlay staging — Online Boutique in namespace `staging` on the shared k3s
+# cluster. Google's base/ and components/ are consumed as-is (decision C);
+# every difference is below.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - namespace.yaml
+
+# A Component is a kustomization of `kind: Component`. Unlike a resource it can
+# both ADD resources and PATCH what is already there, and it is applied after
+# the whole `resources:` block, in the order listed here. That is what lets
+# without-loadgenerator delete a Deployment the base just created.
+#
+# without-loadgenerator: the load generator only makes sense in dev. Dropping it
+#   frees 300m CPU / 256Mi per namespace (see docs/PHASE2-PLAN.md capacity).
+#   It deletes the Deployment ONLY: the loadgenerator ServiceAccount (base) and
+#   NetworkPolicy (component below) stay behind as orphans. Deliberate for now,
+#   to be settled in task 14 with kube-score and checkov output in hand.
+#
+# network-policies: a deny-all plus one policy per service. The component README
+#   warns that minikube's default CNI does not enforce NetworkPolicies; k3s is
+#   different, it embeds a kube-router-based policy controller, enabled unless
+#   --disable-network-policy is passed, which our templates do not pass.
+#   Enforcement is therefore expected but must be PROVEN on the cluster, not
+#   assumed. See the probe caveat in docs/PHASE2-PLAN.md task 10.
+components:
+  - ../../components/without-loadgenerator
+  - ../../components/network-policies
+
+namespace: staging
+
+# `labels` rather than the deprecated `commonLabels`: selectors are immutable
+# on Deployments, so they must never carry labels we might change later.
+# includeSelectors: false also keeps `environment` out of the NetworkPolicy
+# podSelectors, which match on `app` alone and would stop matching otherwise.
+labels:
+  - pairs:
+      environment: staging
+      app.kubernetes.io/part-of: online-boutique
+    includeSelectors: false
+    includeTemplates: true
+
+patches:
+  - path: frontend-external-nodeport.yaml
+
+# Pin the two third-party images the base leaves floating. Google's 11
+# microservice images stay at v0.10.5.
+images:
+  - name: redis
+    newTag: 7.4-alpine
+  - name: busybox
+    newTag: "1.37"
