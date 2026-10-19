@@ -1,0 +1,87 @@
+# Build and push one service image to DockerHub.
+#
+# Phase 3 task 5 — decision D: the full chain on ONE service first (frontend,
+# Go, fastest build), then a matrix over the 11. A first run across six
+# languages fails in three places at once and tells you nothing about which.
+#
+# Image convention is ADR-002: <user>/<service>:sha-<git-sha-7>, immutable,
+# and `latest` is never produced at all rather than produced and forbidden.
+name: build-push
+
+on:
+  push:
+    # TEMPORARY: feature/phase3-cicd is here so the pipeline can be debugged
+    # without merging a broken workflow into develop first. Remove it at task
+    # 22. It is needed because workflow_dispatch only offers a "Run workflow"
+    # button once the file exists on the DEFAULT branch (main) - which, for a
+    # workflow being written, it does not yet.
+    branches: [develop, feature/phase3-cicd]
+    # Only when the frontend actually changes. Without this filter every
+    # commit to develop rebuilds an image identical to the previous one, and
+    # pushes a new tag for it.
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/build-push.yml'
+  # Lets you run it by hand from the Actions tab, on any branch, before
+  # anything has ever been merged to develop.
+  workflow_dispatch:
+
+# Explicit and minimal. The default for a repository is often write-all; this
+# job only reads the code. The tag-bump workflow (task 10) is the one that
+# needs contents: write, and it will be a separate file for that reason.
+permissions:
+  contents: read
+
+env:
+  SERVICE: frontend
+  IMAGE_OWNER: iliasroo
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute the image tag
+        id: meta
+        run: |
+          # ADR-002: 7-char git SHA, immutable. GITHUB_SHA is the commit that
+          # triggered the run, so the tag and the source are tied together and
+          # you can always go from a running pod back to the exact commit.
+          TAG="sha-${GITHUB_SHA::7}"
+          echo "tag=$TAG"                                   >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE_OWNER/$SERVICE:$TAG"           >> "$GITHUB_OUTPUT"
+          echo "Building $IMAGE_OWNER/$SERVICE:$TAG"        >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The Dockerfile does `COPY . .` from within the service directory,
+          # so the context is the service directory, not the repo root.
+          context: src/frontend
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          # Without this, Buildx publishes a manifest LIST carrying a
+          # provenance attestation even for a single platform. That turns the
+          # tag into something Trivy and Cosign have to be told how to
+          # resolve, for no benefit here. Revisit in Phase 4, where
+          # attestations become the point rather than an accident.
+          provenance: false
+          # Layer cache in GitHub Actions storage. The Go build is the slow
+          # part; this makes a no-op rebuild take seconds.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
