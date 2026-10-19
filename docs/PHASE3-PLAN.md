@@ -96,11 +96,12 @@ benefit, not a workaround.
 
 ### Preparation — costs nothing, no cluster
 - [ ] **1.** Branch `feature/phase3-cicd` from `develop`
-- [ ] **2.** DockerHub: account, one repository per service, Access Token with
-      write scope. Decide public or private — private means the cluster needs
-      an `imagePullSecret`, which is extra work but closer to a real setup
+- [ ] **2.** DockerHub: account, **11 public** repositories (one per deployed
+      service), Access Token with write scope. Visibility settled by ADR-005:
+      the free plan allows 1 private repository, so 11 private would need a
+      paid plan — the constraint decides it, not a preference
 - [ ] **3.** GitHub secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`
-- [ ] **4.** **ADR-004** — who commits the image bump and to which branch (the
+- [x] **4.** **ADR-004** — who commits the image bump and to which branch (the
       three options above). Write it down before any workflow: it decides the
       shape of every one of them
 
