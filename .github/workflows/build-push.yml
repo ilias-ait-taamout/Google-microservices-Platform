@@ -34,11 +34,22 @@ permissions:
 
 env:
   SERVICE: frontend
-  IMAGE_OWNER: iliasroo
+  # A repository VARIABLE, not a secret. A DockerHub username is written in
+  # plain text in the name of every image on a public registry, so it is not
+  # confidential. Registering it as a secret bought nothing and broke two
+  # things: GitHub masked every occurrence of it in the logs (making them read
+  # ***/frontend), and it refused to pass this job's `image` output to any
+  # downstream job - "Skip output image since it may contain secret" - which
+  # Trivy and Cosign both need. The TOKEN stays a secret.
+  IMAGE_OWNER: ${{ vars.DOCKERHUB_USERNAME }}
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest. A floating runner label is the same class of
+    # problem as a floating image tag, which ADR-002 forbids for our own
+    # images - and the label is migrating to Ubuntu 26 starting today, which
+    # would change the build environment under us without a commit.
+    runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       image: ${{ steps.meta.outputs.image }}
@@ -64,7 +75,7 @@ jobs:
       - name: Log in to DockerHub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
