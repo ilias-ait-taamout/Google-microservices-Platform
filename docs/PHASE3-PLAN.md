@@ -131,11 +131,64 @@ SHA. The version stays in a trailing comment for humans and for Dependabot.
 This is the most concrete supply-chain argument the project has: the scanner
 meant to protect us was itself the vector.
 
-- [ ] **6.** Trivy scan with a severity threshold that **fails** the job.
+- [x] **6.** Trivy scan with a severity threshold that **fails** the job.
       Decide the threshold and whether unfixed vulnerabilities count — a scan
       that never fails proves nothing
-- [ ] **7.** Cosign signature, keyless via GitHub's OIDC token: no private key
+- [x] **7.** Cosign signature, keyless via GitHub's OIDC token: no private key
       to store, the signature is tied to the workflow identity
+
+**Task 6 done (19 Oct 2026), and it blocked - which is the point.**
+
+Build order is now build locally -> scan -> push, so a vulnerable image is
+never published. Two Trivy steps: the first always succeeds and writes the full
+report, the second is the gate. One step cannot do both, because a gate that
+fails stops the job before any report is written. The report is archived with
+`if: always()`.
+
+Gate: `HIGH,CRITICAL` with `--ignore-unfixed`. First run: **40 findings, all
+HIGH, zero CRITICAL, every one with status `fixed`** - so `--ignore-unfixed`
+filtered nothing and the gate was right to block. The Debian base layer
+(`gcr.io/distroless/static`, 6 packages) scored **zero**: the argument for
+distroless images, measured rather than quoted.
+
+Remediation, measured in two steps:
+
+| | findings |
+|---|---|
+| initial | **40** |
+| after builder `golang:1.26.2` -> `1.26.9` | **21** |
+| after raising the four modules | *pending rescan* |
+
+The 19-finding drop isolates the `stdlib` share exactly. Modules raised by
+`bump-go-deps.yml`: x/crypto 0.48.0 -> 0.58.0, x/net 0.51.0 -> 0.61.0, x/text
+0.34.0 -> 0.43.0, grpc 1.79.3 -> 1.84.0 - all above the required fixes, and
+`go build ./...` passed, so the grpc jump broke no API.
+
+**Gotcha found:** a push made with the default `GITHUB_TOKEN` does **not**
+trigger any workflow, by GitHub's anti-loop design. The bot's commit therefore
+did not rescan on its own. Harmless for task 10, because ArgoCD watches Git
+directly rather than workflows, but it would matter for any workflow meant to
+react to the bump.
+
+**Task 7 done (19 Oct 2026).** Cosign keyless, through GitHub's OIDC token:
+`id-token: write`, Fulcio issues a ~10-minute certificate, and the signature
+plus certificate land in the public Rekor transparency log. **No private key to
+store, rotate or leak** - what is proved is an identity, "this workflow in this
+repository built these bytes", rather than "whoever holds the key signed
+something". For a project whose Phase 4 is about secret management, not
+creating a signing key to manage is the stronger position.
+
+The signature is made over the **digest**, never the tag - a tag is a movable
+pointer, the same reason every action here is pinned by SHA and the same reason
+ADR-002 makes image tags immutable.
+
+The run then verifies its own signature with `--certificate-identity-regexp`
+and `--certificate-oidc-issuer`. Not circular: a signature being present and a
+signature being bound to this repository's identity are different claims, and
+only the second is worth anything. Those two flags are exactly what a Phase 4
+admission policy will check before admitting a pod, so the step is that policy
+rehearsed where it is cheap to get wrong.
+
 - [ ] **8.** Verify the chain by hand: image on DockerHub, `cosign verify`
       passes, Trivy report archived as a workflow artifact
 
