@@ -1,11 +1,28 @@
-# Build and push one service image to DockerHub.
+# Build, scan and push one service image to DockerHub.
 #
-# Phase 3 task 5 — decision D: the full chain on ONE service first (frontend,
-# Go, fastest build), then a matrix over the 11. A first run across six
-# languages fails in three places at once and tells you nothing about which.
+# Phase 3 tasks 5-6 - decision D: the full chain on ONE service first
+# (frontend, Go, fastest build), then a matrix over the 11. A first run across
+# six languages fails in three places at once and tells you nothing about which.
 #
-# Image convention is ADR-002: <user>/<service>:sha-<git-sha-7>, immutable,
-# and `latest` is never produced at all rather than produced and forbidden.
+# Image convention is ADR-002: <user>/<service>:sha-<git-sha-7>, immutable, and
+# `latest` is never produced at all rather than produced and then forbidden.
+#
+# -----------------------------------------------------------------------------
+# WHY EVERY ACTION IS PINNED TO A COMMIT SHA
+# -----------------------------------------------------------------------------
+# A tag is a movable pointer. On 19 March 2026 an attacker with stolen
+# credentials force-pushed 76 of the 77 version tags of aquasecurity/trivy-action
+# to credential-stealing malware that dumped runner memory and harvested secrets
+# (advisory GHSA-69fq-xp46-6x23). Tags 0.0.1 through 0.34.2 were affected;
+# 0.35.0 was not. Anyone pinned to `@v0.30.0` got the malware without changing a
+# single line of their workflow.
+#
+# A commit SHA cannot be moved. Aqua's own remediation advice is to pin actions
+# by full SHA rather than by tag, so that is what this file does - including for
+# the scanner whose job is to protect us from exactly this.
+#
+# The version in the comment is for humans and for Dependabot, which reads it to
+# know what to bump. The SHA is what actually runs.
 name: build-push
 
 on:
@@ -16,19 +33,14 @@ on:
     # button once the file exists on the DEFAULT branch (main) - which, for a
     # workflow being written, it does not yet.
     branches: [develop, feature/phase3-cicd]
-    # Only when the frontend actually changes. Without this filter every
-    # commit to develop rebuilds an image identical to the previous one, and
-    # pushes a new tag for it.
     paths:
       - 'src/frontend/**'
       - '.github/workflows/build-push.yml'
-  # Lets you run it by hand from the Actions tab, on any branch, before
-  # anything has ever been merged to develop.
   workflow_dispatch:
 
 # Explicit and minimal. The default for a repository is often write-all; this
-# job only reads the code. The tag-bump workflow (task 10) is the one that
-# needs contents: write, and it will be a separate file for that reason.
+# job only reads the code. The tag-bump workflow (task 10) is the one that needs
+# contents: write, which is why it will be a separate file.
 permissions:
   contents: read
 
@@ -36,19 +48,15 @@ env:
   SERVICE: frontend
   # A repository VARIABLE, not a secret. A DockerHub username is written in
   # plain text in the name of every image on a public registry, so it is not
-  # confidential. Registering it as a secret bought nothing and broke two
-  # things: GitHub masked every occurrence of it in the logs (making them read
-  # ***/frontend), and it refused to pass this job's `image` output to any
-  # downstream job - "Skip output image since it may contain secret" - which
-  # Trivy and Cosign both need. The TOKEN stays a secret.
+  # confidential. As a secret it bought nothing and broke two things: GitHub
+  # masked it everywhere (logs read ***/frontend) and refused to pass this job's
+  # `image` output downstream. The TOKEN stays a secret.
   IMAGE_OWNER: ${{ vars.DOCKERHUB_USERNAME }}
 
 jobs:
   build:
     # Pinned, not ubuntu-latest. A floating runner label is the same class of
-    # problem as a floating image tag, which ADR-002 forbids for our own
-    # images - and the label is migrating to Ubuntu 26 starting today, which
-    # would change the build environment under us without a commit.
+    # problem as a floating image tag, which ADR-002 forbids for our own images.
     runs-on: ubuntu-24.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
@@ -56,43 +64,92 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Compute the image tag
         id: meta
         run: |
           # ADR-002: 7-char git SHA, immutable. GITHUB_SHA is the commit that
-          # triggered the run, so the tag and the source are tied together and
-          # you can always go from a running pod back to the exact commit.
+          # triggered the run, so a running pod can always be traced back to the
+          # exact source. That is what makes the task 15 rollback meaningful.
           TAG="sha-${GITHUB_SHA::7}"
-          echo "tag=$TAG"                                   >> "$GITHUB_OUTPUT"
-          echo "image=$IMAGE_OWNER/$SERVICE:$TAG"           >> "$GITHUB_OUTPUT"
-          echo "Building $IMAGE_OWNER/$SERVICE:$TAG"        >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=$TAG"                         >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE_OWNER/$SERVICE:$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to DockerHub
-        uses: docker/login-action@v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      # ---------------------------------------------------------------------
+      # Build LOCALLY first. The image is not pushed until Trivy has passed.
+      # Publishing and then scanning would mean a vulnerable image is already
+      # pullable by the time anyone finds out.
+      # ---------------------------------------------------------------------
+      - name: Build (local, not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          # The Dockerfile does `COPY . .` from within the service directory,
+          # The Dockerfile does `COPY . .` from inside the service directory,
           # so the context is the service directory, not the repo root.
+          context: src/frontend
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.image }}
+          # Without this, Buildx publishes a manifest LIST with a provenance
+          # attestation even for one platform, which Trivy and Cosign then have
+          # to be told how to resolve. Phase 4 revisits it, where attestations
+          # are the point rather than an accident.
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Two scans on purpose. The first always succeeds and produces the full
+      # picture for the record; the second is the gate. One scan cannot do both,
+      # because a gate that fails stops the job before any report is written.
+      - name: Trivy - full report, never fails
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}
+          format: table
+          output: trivy-report.txt
+          exit-code: '0'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+
+      - name: Trivy - the gate
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}
+          exit-code: '1'
+          severity: 'HIGH,CRITICAL'
+          # Skips vulnerabilities with no fix available upstream. Without it the
+          # pipeline blocks on CVEs in gcr.io/distroless/static that we cannot
+          # patch, and the only way forward would be to disable the scan. A
+          # threshold that is respected beats a stricter one that gets bypassed.
+          ignore-unfixed: true
+
+      - name: Archive the Trivy report
+        if: always()  # so the report survives a failed gate - that is when it matters most
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-${{ steps.meta.outputs.tag }}
+          path: trivy-report.txt
+          retention-days: 30
+
+      # Only now. Everything is already in the layer cache, so this is seconds.
+      - name: Push the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
           context: src/frontend
           push: true
           tags: ${{ steps.meta.outputs.image }}
-          # Without this, Buildx publishes a manifest LIST carrying a
-          # provenance attestation even for a single platform. That turns the
-          # tag into something Trivy and Cosign have to be told how to
-          # resolve, for no benefit here. Revisit in Phase 4, where
-          # attestations become the point rather than an accident.
           provenance: false
-          # Layer cache in GitHub Actions storage. The Go build is the slow
-          # part; this makes a no-op rebuild take seconds.
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          echo "### Pushed \`${{ steps.meta.outputs.image }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Trivy gate: HIGH,CRITICAL, unfixed ignored - passed." >> "$GITHUB_STEP_SUMMARY"

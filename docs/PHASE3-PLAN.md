@@ -106,9 +106,31 @@ benefit, not a workaround.
       shape of every one of them
 
 ### CI — one service first (decision D)
-- [ ] **5.** `.github/workflows/build-push.yml` on `frontend` only: build,
+- [x] **5.** `.github/workflows/build-push.yml` on `frontend` only: build,
       tag `sha-<7>` per ADR-002, push to DockerHub. Triggered on pushes to
       `develop` touching `src/frontend/**`
+
+**Task 5 done (19 Oct 2026).** `iliasroo/frontend:sha-a0f5b7a` on DockerHub,
+12 MB, amd64, single manifest. First run 1m31s cold, 2s warm on the gha cache.
+
+Two problems the first run surfaced and that are now fixed: `DOCKERHUB_USERNAME`
+was a **secret**, so GitHub masked it everywhere (logs read `***/frontend`) and
+refused to pass the job's `image` output downstream - which Trivy and Cosign
+both need. It is a repository **variable** now; the token stays a secret.
+Over-classifying a non-secret has a real cost: unreadable logs push people to
+disable masking, and silently dropped outputs fail without saying why.
+`runs-on` is also pinned to `ubuntu-24.04` rather than `ubuntu-latest`, for the
+same reason ADR-002 forbids floating image tags.
+
+**All actions are pinned to full commit SHAs.** On 19 March 2026 an attacker
+force-pushed **76 of the 77 version tags** of `aquasecurity/trivy-action` to
+credential-stealing malware (GHSA-69fq-xp46-6x23); tags 0.0.1-0.34.2 were
+affected, 0.35.0 was not. Anyone pinned to a tag got the malware without
+changing a line of their workflow. Aqua's own remediation advice is to pin by
+SHA. The version stays in a trailing comment for humans and for Dependabot.
+This is the most concrete supply-chain argument the project has: the scanner
+meant to protect us was itself the vector.
+
 - [ ] **6.** Trivy scan with a severity threshold that **fails** the job.
       Decide the threshold and whether unfixed vulnerabilities count — a scan
       that never fails proves nothing
