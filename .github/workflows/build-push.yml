@@ -1,8 +1,8 @@
-# Build, scan and push one service image to DockerHub.
+# Build, scan, push and sign every deployed service image.
 #
-# Phase 3 tasks 5-6 - decision D: the full chain on ONE service first
-# (frontend, Go, fastest build), then a matrix over the 11. A first run across
-# six languages fails in three places at once and tells you nothing about which.
+# Phase 3 tasks 5-9. Decision D was "one service end to end first, then
+# generalise" - the frontend proved the chain, this generalises it to the 11
+# services that kustomize/base actually deploys.
 #
 # Image convention is ADR-002: <user>/<service>:sha-<git-sha-7>, immutable, and
 # `latest` is never produced at all rather than produced and then forbidden.
@@ -21,8 +21,8 @@
 # by full SHA rather than by tag, so that is what this file does - including for
 # the scanner whose job is to protect us from exactly this.
 #
-# The version in the comment is for humans and for Dependabot, which reads it to
-# know what to bump. The SHA is what actually runs.
+# The version in the trailing comment is for humans and for Dependabot, which
+# reads it to know what to bump. The SHA is what actually runs.
 name: build-push
 
 on:
@@ -34,53 +34,133 @@ on:
     # workflow being written, it does not yet.
     branches: [develop, feature/phase3-cicd]
     paths:
-      - 'src/frontend/**'
+      - 'src/**'
       - '.github/workflows/build-push.yml'
   workflow_dispatch:
 
-# Explicit and minimal. The default for a repository is often write-all; this
-# job only reads the code. The tag-bump workflow (task 10) is the one that needs
-# contents: write, which is why it will be a separate file.
 permissions:
   contents: read
-  # Required for Cosign KEYLESS signing. GitHub mints a short-lived OIDC token
-  # for this run; Fulcio exchanges it for a certificate valid about ten minutes,
-  # and the signature plus certificate go to the public Rekor transparency log.
-  # There is no private key to store, rotate or leak - the identity being proved
-  # is "this workflow, in this repository", not "whoever holds the key".
-  id-token: write
 
 env:
-  SERVICE: frontend
-  # A repository VARIABLE, not a secret. A DockerHub username is written in
-  # plain text in the name of every image on a public registry, so it is not
-  # confidential. As a secret it bought nothing and broke two things: GitHub
-  # masked it everywhere (logs read ***/frontend) and refused to pass this job's
-  # `image` output downstream. The TOKEN stays a secret.
   IMAGE_OWNER: ${{ vars.DOCKERHUB_USERNAME }}
 
 jobs:
-  build:
-    # Pinned, not ubuntu-latest. A floating runner label is the same class of
-    # problem as a floating image tag, which ADR-002 forbids for our own images.
+  # ---------------------------------------------------------------------------
+  # Which services actually changed? Rebuilding all 11 on every commit would
+  # cost ~20 minutes and republish ten images whose bytes did not change, each
+  # under a new tag - which makes the tag stop meaning anything.
+  #
+  # Each filter also lists this workflow file: editing the pipeline must rebuild
+  # everything, because the pipeline is part of how the artefact is produced.
+  # ---------------------------------------------------------------------------
+  changes:
     runs-on: ubuntu-24.04
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}
-      image: ${{ steps.meta.outputs.image }}
+      services: ${{ steps.filter.outputs.changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Detect changed services
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # shoppingassistantservice is deliberately absent. It ships a
+          # Dockerfile but is NOT in kustomize/base, so nothing deploys it and
+          # building it would publish an image no cluster ever pulls.
+          filters: |
+            adservice:
+              - 'src/adservice/**'
+              - '.github/workflows/build-push.yml'
+            cartservice:
+              - 'src/cartservice/**'
+              - '.github/workflows/build-push.yml'
+            checkoutservice:
+              - 'src/checkoutservice/**'
+              - '.github/workflows/build-push.yml'
+            currencyservice:
+              - 'src/currencyservice/**'
+              - '.github/workflows/build-push.yml'
+            emailservice:
+              - 'src/emailservice/**'
+              - '.github/workflows/build-push.yml'
+            frontend:
+              - 'src/frontend/**'
+              - '.github/workflows/build-push.yml'
+            loadgenerator:
+              - 'src/loadgenerator/**'
+              - '.github/workflows/build-push.yml'
+            paymentservice:
+              - 'src/paymentservice/**'
+              - '.github/workflows/build-push.yml'
+            productcatalogservice:
+              - 'src/productcatalogservice/**'
+              - '.github/workflows/build-push.yml'
+            recommendationservice:
+              - 'src/recommendationservice/**'
+              - '.github/workflows/build-push.yml'
+            shippingservice:
+              - 'src/shippingservice/**'
+              - '.github/workflows/build-push.yml'
+
+      - name: Report
+        run: |
+          echo "Changed services: ${{ steps.filter.outputs.changes }}" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required for Cosign KEYLESS signing. GitHub mints a short-lived OIDC
+      # token for this job; Fulcio exchanges it for a certificate valid about
+      # ten minutes, and the signature plus certificate go to the public Rekor
+      # transparency log. There is no private key to store, rotate or leak - the
+      # identity proved is "this workflow, in this repository", not "whoever
+      # holds the key".
+      id-token: write
+
+    strategy:
+      # Six languages. One of them failing must not cancel the other ten, or a
+      # single run tells you about one problem instead of all of them.
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+
+    name: ${{ matrix.service }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Compute the image tag
+      - name: Compute tag and build context
         id: meta
+        env:
+          SERVICE: ${{ matrix.service }}
         run: |
+          set -euo pipefail
           # ADR-002: 7-char git SHA, immutable. GITHUB_SHA is the commit that
           # triggered the run, so a running pod can always be traced back to the
-          # exact source. That is what makes the task 15 rollback meaningful.
+          # exact source - which is what makes the task 15 rollback meaningful.
           TAG="sha-${GITHUB_SHA::7}"
-          echo "tag=$TAG"                         >> "$GITHUB_OUTPUT"
-          echo "image=$IMAGE_OWNER/$SERVICE:$TAG" >> "$GITHUB_OUTPUT"
+
+          # Ten services keep their Dockerfile at src/<service>/. cartservice is
+          # a .NET project and nests it one level deeper. No Dockerfile here
+          # COPYs from a parent directory, so the service directory is always a
+          # sufficient context - checked, not assumed.
+          case "$SERVICE" in
+            cartservice) CONTEXT="src/cartservice/src" ;;
+            *)           CONTEXT="src/$SERVICE" ;;
+          esac
+          test -f "$CONTEXT/Dockerfile" || { echo "::error::no Dockerfile at $CONTEXT"; exit 1; }
+
+          {
+            echo "tag=$TAG"
+            echo "context=$CONTEXT"
+            echo "image=$IMAGE_OWNER/$SERVICE:$TAG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -91,17 +171,13 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ---------------------------------------------------------------------
-      # Build LOCALLY first. The image is not pushed until Trivy has passed.
-      # Publishing and then scanning would mean a vulnerable image is already
+      # Build LOCALLY first. The image is not pushed until Trivy has passed -
+      # publishing and then scanning would mean a vulnerable image is already
       # pullable by the time anyone finds out.
-      # ---------------------------------------------------------------------
       - name: Build (local, not pushed)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          # The Dockerfile does `COPY . .` from inside the service directory,
-          # so the context is the service directory, not the repo root.
-          context: src/frontend
+          context: ${{ steps.meta.outputs.context }}
           load: true
           push: false
           tags: ${{ steps.meta.outputs.image }}
@@ -110,8 +186,10 @@ jobs:
           # to be told how to resolve. Phase 4 revisits it, where attestations
           # are the point rather than an accident.
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Scoped per service, or the eleven jobs would evict each other's
+          # layers from a single shared cache key.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       # Two scans on purpose. The first always succeeds and produces the full
       # picture for the record; the second is the gate. One scan cannot do both,
@@ -132,16 +210,16 @@ jobs:
           exit-code: '1'
           severity: 'HIGH,CRITICAL'
           # Skips vulnerabilities with no fix available upstream. Without it the
-          # pipeline blocks on CVEs in gcr.io/distroless/static that we cannot
-          # patch, and the only way forward would be to disable the scan. A
-          # threshold that is respected beats a stricter one that gets bypassed.
+          # pipeline blocks on CVEs nobody can patch, and the only way forward
+          # would be to disable the scan. A threshold that is respected beats a
+          # stricter one that gets bypassed.
           ignore-unfixed: true
 
       - name: Archive the Trivy report
-        if: always()  # so the report survives a failed gate - that is when it matters most
+        if: always()  # the report matters most when the gate failed
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: trivy-${{ steps.meta.outputs.tag }}
+          name: trivy-${{ matrix.service }}-${{ steps.meta.outputs.tag }}
           path: trivy-report.txt
           retention-days: 30
 
@@ -150,48 +228,48 @@ jobs:
         id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: src/frontend
+          context: ${{ steps.meta.outputs.context }}
           push: true
           tags: ${{ steps.meta.outputs.image }}
           provenance: false
-          cache-from: type=gha
+          cache-from: type=gha,scope=${{ matrix.service }}
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      # Sign the DIGEST, never the tag. A tag is a movable pointer - the whole
-      # reason every action in this file is pinned by SHA. Signing a tag would
-      # prove nothing about the bytes that get pulled later.
+      # Sign the DIGEST, never the tag. A tag is a movable pointer - the same
+      # reason every action here is pinned by SHA. Signing a tag would prove
+      # nothing about the bytes pulled later.
       - name: Sign the image (keyless)
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
         run: |
-          set -x
           cosign version
           cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"
 
-      # Kept, cheap and useful: records in the log WHERE the signature lives.
-      # cosign v3 attaches it as an OCI 1.1 referrer, not as the legacy
-      # sha256-<digest>.sig tag - so nothing named .sig ever appears on Docker
-      # Hub, and looking for one is a dead end.
+      # Cheap, and it records WHERE the signature lives: cosign v3 attaches it
+      # as an OCI 1.1 referrer, not as the legacy sha256-<digest>.sig tag. No
+      # .sig tag ever appears on Docker Hub, and hunting for one is a dead end.
       - name: Show what is attached to the digest
         if: always()
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
         run: cosign tree "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
 
-      # Fatal again. An unverifiable signature must break the build, or
-      # signing is theatre.
+      # Fatal. An unverifiable signature makes signing theatre.
       #
       # The retry is not papering over a failure. Docker Hub's referrers index
-      # is eventually consistent: the first run verified seconds after signing
-      # and got "no signatures found", while the next run found TWO signatures
-      # on the same digest - the earlier one had simply become queryable in the
-      # meantime. A fresh digest will hit that window again, so we wait for it
-      # rather than pretend it is not there.
+      # is eventually consistent: one run verified seconds after signing and got
+      # "no signatures found", while the next found TWO signatures on the same
+      # digest - the earlier one had simply become queryable meanwhile. A fresh
+      # digest hits that window again, so we wait for the index rather than
+      # pretend it is not there.
       - name: Verify the signature
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
         run: |
           set -uo pipefail
           REF="$IMAGE_OWNER/$SERVICE@$DIGEST"
@@ -211,9 +289,7 @@ jobs:
 
       - name: Summary
         # Only reached when every step above passed, verification included -
-        # which is what makes these lines true rather than decorative. The
-        # earlier version printed "verified" unconditionally, while the verify
-        # step was failing two steps above it.
+        # which is what makes these lines true rather than decorative.
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -222,8 +298,8 @@ jobs:
             echo ""
             echo "| | |"
             echo "|---|---|"
+            echo "| context | \`${{ steps.meta.outputs.context }}\` |"
             echo "| digest | \`$DIGEST\` |"
             echo "| Trivy | HIGH,CRITICAL, unfixed ignored - no findings |"
             echo "| Signature | keyless, verified against this repository |"
-            echo "| Stored as | OCI 1.1 referrer, not a .sig tag |"
           } >> "$GITHUB_STEP_SUMMARY"
