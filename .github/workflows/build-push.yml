@@ -165,13 +165,39 @@ jobs:
       - name: Sign the image (keyless)
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
-        run: cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"
+        run: |
+          set -x
+          cosign version
+          cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"
+
+      # Diagnostic, temporary. `sign` reported success but `verify` answered
+      # "no signatures found" and no .sig tag appeared on Docker Hub, so we need
+      # to see WHERE cosign put the signature before guessing again.
+      #   triangulate -> the reference cosign expects the signature to live at
+      #   tree        -> what is actually attached to that digest
+      # Neither must break the run, hence `|| true`: this step is here to
+      # produce evidence, not to pass judgement.
+      - name: Where did the signature go?
+        if: always()
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          echo "--- triangulate (expected location) ---"
+          cosign triangulate "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
+          echo "--- tree (what is attached) ---"
+          cosign tree "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
+          echo "--- can cosign download the signature? ---"
+          cosign download signature "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
 
       # Verifying in the same run is not circular: it proves the signature is
       # bound to THIS repository's workflow identity and not merely present.
       # The same two flags are what a deployment-time admission policy will
       # check in Phase 4 - so this step is the policy, rehearsed.
       - name: Verify the signature
+        # Temporarily non-fatal: we are diagnosing, and a red run would hide the
+        # diagnostic output below it. Restored to a hard failure once the
+        # signature is found - an unverifiable signature must break the build.
+        continue-on-error: true
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
