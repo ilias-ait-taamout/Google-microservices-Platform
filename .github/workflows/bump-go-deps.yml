@@ -1,0 +1,83 @@
+# One-shot maintenance workflow: raise a Go service's vulnerable dependencies
+# and commit the result.
+#
+# Why this exists. The Trivy gate (task 6) blocked frontend on 40 HIGH CVEs,
+# every one with a fix available upstream. Doing that bump needs a Go toolchain
+# and reachable module proxy, which the local machine did not have at hand.
+# A GitHub runner has both.
+#
+# It is deliberately NOT part of the pipeline: dependency bumps are a decision,
+# not something a build should do behind your back. It runs when you push a
+# change to this file, does its job, and the commit it makes then triggers
+# build-push.yml for the rescan - which is the whole point.
+#
+# Delete it, or generalise it with a service input for the other ten services,
+# at task 22. Dependabot is the proper long-term answer.
+name: bump-go-deps
+
+on:
+  push:
+    branches: [feature/phase3-cicd]
+    # Only its own file. A change to go.mod must not retrigger it, or it loops.
+    paths:
+      - '.github/workflows/bump-go-deps.yml'
+  workflow_dispatch:
+
+# This one DOES need write access - it is the exception, and the reason it is a
+# separate file from build-push.yml rather than another job inside it.
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # Matches the builder image the Dockerfile now pins. The stdlib CVEs
+          # are fixed by the toolchain, not by any module.
+          go-version: '1.26.9'
+          cache-dependency-path: src/frontend/go.sum
+
+      - name: Raise the four vulnerable modules
+        working-directory: src/frontend
+        run: |
+          set -euxo pipefail
+          # x/crypto, x/net and x/text are INDIRECT dependencies, so nothing
+          # pulls them forward on its own - they have to be named explicitly.
+          go get -u \
+            golang.org/x/crypto \
+            golang.org/x/net \
+            golang.org/x/text \
+            google.golang.org/grpc
+          go mod tidy
+          # Fail here rather than three minutes later in the image build if the
+          # grpc 1.79 -> 1.8x jump broke an API.
+          go build ./...
+          echo "--- resulting versions ---"
+          go list -m golang.org/x/crypto golang.org/x/net golang.org/x/text google.golang.org/grpc
+
+      - name: Commit the result
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- src/frontend/go.mod src/frontend/go.sum; then
+            echo "Nothing changed - the dependencies were already current." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/frontend/go.mod src/frontend/go.sum
+          git commit -m "fix(frontend): raise x/crypto, x/net, x/text and grpc past the Trivy gate" \
+                     -m "Automated by .github/workflows/bump-go-deps.yml. All 40 findings were HIGH with a fix available upstream, so --ignore-unfixed filtered none of them. The stdlib share is handled separately by the builder image bump to golang 1.26.9."
+          git push
+          {
+            echo "### Bumped"
+            echo '```'
+            git show --stat --oneline HEAD | head -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
