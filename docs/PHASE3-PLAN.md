@@ -189,8 +189,59 @@ only the second is worth anything. Those two flags are exactly what a Phase 4
 admission policy will check before admitting a pod, so the step is that policy
 rehearsed where it is cheap to get wrong.
 
-- [ ] **8.** Verify the chain by hand: image on DockerHub, `cosign verify`
+- [x] **8.** Verify the chain by hand: image on DockerHub, `cosign verify`
       passes, Trivy report archived as a workflow artifact
+
+
+**Task 8 done (19 Oct 2026) - the chain is verified end to end.**
+
+`iliasroo/frontend:sha-931b803`, digest `sha256:6f121e03...`, Trivy **0
+findings**, signature verified against this repository's workflow identity,
+Trivy report archived as a run artifact.
+
+Reproducibility, observed rather than claimed: `sha-af4e9d7` and `sha-931b803`
+are **the same digest**. Different commits, identical service source, identical
+bytes out.
+
+#### Where cosign v3 actually stores a signature
+
+This cost a debugging round and is worth recording.
+
+`cosign sign` reported success, `cosign verify` answered **`no signatures
+found`**, and no `.sig` tag appeared on Docker Hub. Three cosign-native probes
+settled it:
+
+- `cosign version` -> **v3.0.6**
+- `cosign triangulate` -> points at the **legacy** location
+  `...:sha256-<digest>.sig`, which does not exist
+- `cosign tree` -> the signature is there, **attached as an OCI 1.1 referrer**
+
+cosign v3 no longer writes the `sha256-<digest>.sig` tag. Looking for one on
+Docker Hub is a dead end, and its absence is not evidence of a missing
+signature.
+
+**But that was not the failure.** The next run found **two** signatures on the
+same digest - the earlier run's and its own. The first verify had run seconds
+after signing, before Docker Hub's referrers index caught up. An
+**eventual-consistency race**, not an incompatibility.
+
+Handled with a retry loop (6 attempts, 10s apart) rather than by weakening the
+check: verify stays fatal, because an unverifiable signature makes signing
+theatre. A fresh digest will hit that window again, so the fix must wait for
+the index rather than assume it away.
+
+**A hypothesis that was half right, recorded as such.** The prediction was
+"cosign v3 writes an OCI referrer instead of the .sig tag, and Docker Hub's
+referrer support is incomplete, so the signature lands where verify cannot look
+for it". The mechanism was right; the conclusion was wrong - Docker Hub stores
+referrers fine and verify finds them. The diagnostic step existed precisely
+because the hypothesis was not trusted, which is what kept a wrong conclusion
+out of the fix.
+
+**Also fixed:** the job summary printed "Signature: verified" unconditionally
+while the verify step was failing two steps above it. A summary that asserts
+what it has not checked is worse than no summary. It now runs only after a
+successful verification, which is what makes the line true.
 
 ### CI — generalise
 - [ ] **9.** Matrix over the 11 services with `dorny/paths-filter`, so an

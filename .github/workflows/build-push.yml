@@ -170,43 +170,50 @@ jobs:
           cosign version
           cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"
 
-      # Diagnostic, temporary. `sign` reported success but `verify` answered
-      # "no signatures found" and no .sig tag appeared on Docker Hub, so we need
-      # to see WHERE cosign put the signature before guessing again.
-      #   triangulate -> the reference cosign expects the signature to live at
-      #   tree        -> what is actually attached to that digest
-      # Neither must break the run, hence `|| true`: this step is here to
-      # produce evidence, not to pass judgement.
-      - name: Where did the signature go?
+      # Kept, cheap and useful: records in the log WHERE the signature lives.
+      # cosign v3 attaches it as an OCI 1.1 referrer, not as the legacy
+      # sha256-<digest>.sig tag - so nothing named .sig ever appears on Docker
+      # Hub, and looking for one is a dead end.
+      - name: Show what is attached to the digest
         if: always()
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          echo "--- triangulate (expected location) ---"
-          cosign triangulate "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
-          echo "--- tree (what is attached) ---"
-          cosign tree "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
-          echo "--- can cosign download the signature? ---"
-          cosign download signature "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
+        run: cosign tree "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
 
-      # Verifying in the same run is not circular: it proves the signature is
-      # bound to THIS repository's workflow identity and not merely present.
-      # The same two flags are what a deployment-time admission policy will
-      # check in Phase 4 - so this step is the policy, rehearsed.
+      # Fatal again. An unverifiable signature must break the build, or
+      # signing is theatre.
+      #
+      # The retry is not papering over a failure. Docker Hub's referrers index
+      # is eventually consistent: the first run verified seconds after signing
+      # and got "no signatures found", while the next run found TWO signatures
+      # on the same digest - the earlier one had simply become queryable in the
+      # meantime. A fresh digest will hit that window again, so we wait for it
+      # rather than pretend it is not there.
       - name: Verify the signature
-        # Temporarily non-fatal: we are diagnosing, and a red run would hide the
-        # diagnostic output below it. Restored to a hard failure once the
-        # signature is found - an unverifiable signature must break the build.
-        continue-on-error: true
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          cosign verify \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "$IMAGE_OWNER/$SERVICE@$DIGEST"
+          set -uo pipefail
+          REF="$IMAGE_OWNER/$SERVICE@$DIGEST"
+          for attempt in 1 2 3 4 5 6; do
+            if cosign verify \
+                 --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+                 --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                 "$REF"; then
+              echo "Verified on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt found nothing yet; the referrers index lags. Waiting 10s."
+            sleep 10
+          done
+          echo "::error::Signature never became verifiable after 6 attempts."
+          exit 1
 
       - name: Summary
+        # Only reached when every step above passed, verification included -
+        # which is what makes these lines true rather than decorative. The
+        # earlier version printed "verified" unconditionally, while the verify
+        # step was failing two steps above it.
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: |
@@ -216,6 +223,7 @@ jobs:
             echo "| | |"
             echo "|---|---|"
             echo "| digest | \`$DIGEST\` |"
-            echo "| Trivy gate | HIGH,CRITICAL, unfixed ignored - passed |"
+            echo "| Trivy | HIGH,CRITICAL, unfixed ignored - no findings |"
             echo "| Signature | keyless, verified against this repository |"
+            echo "| Stored as | OCI 1.1 referrer, not a .sig tag |"
           } >> "$GITHUB_STEP_SUMMARY"
