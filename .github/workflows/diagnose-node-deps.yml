@@ -41,9 +41,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
-      - name: Install exactly what the image installs
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # Match the builder image, node:20.20.2-alpine. Resolving a tree on a
+          # different major can pick different versions and make the diagnosis
+          # describe a tree the image never builds.
+          node-version: '20'
+
+      - name: Install, the way the image does
         working-directory: src/${{ matrix.service }}
-        run: npm ci --omit=dev
+        run: |
+          # The Dockerfile runs `npm install --only=production`, NOT `npm ci`.
+          # `npm ci` is strict: it refuses when package-lock.json and
+          # package.json disagree, which is a different question from the one
+          # being asked here. The first version of this step used it and failed
+          # for that reason.
+          set +e
+          npm install --omit=dev 2>&1 | tee /tmp/npm.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            # A diagnostic step that fails without saying why is worthless -
+            # that is exactly what happened on the first attempt. Push the
+            # reason out through annotations, which the API can read.
+            grep -iE 'npm (error|ERR)|EUSAGE|ERESOLVE' /tmp/npm.log | head -8 \
+              | while IFS= read -r l; do echo "::error title=NpmInstall::$l"; done
+            tail -3 /tmp/npm.log | while IFS= read -r l; do echo "::error title=NpmTail::$l"; done
+            exit 1
+          fi
 
       - name: Who pulls the vulnerable packages?
         working-directory: src/${{ matrix.service }}
