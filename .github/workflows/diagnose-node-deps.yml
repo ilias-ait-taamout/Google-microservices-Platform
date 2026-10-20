@@ -72,40 +72,53 @@ jobs:
           fi
 
       - name: Who pulls the vulnerable packages?
+        # NOTHING here may fail the job. `npm ls <pkg>` exits 1 when the package
+        # is not in the tree, which is a perfectly normal answer to the question
+        # being asked - and with pipefail it killed the step on the first miss,
+        # producing no output at all. A diagnostic that can fail is a diagnostic
+        # that will fail exactly when you need it.
+        continue-on-error: true
         working-directory: src/${{ matrix.service }}
         run: |
-          set -uo pipefail
+          PKGS="protobufjs brace-expansion tar minimatch linkify-it"
+
           {
             echo "### ${{ matrix.service }}"
-            for pkg in protobufjs brace-expansion tar minimatch linkify-it; do
+            for pkg in $PKGS; do
               echo ""
               echo "#### $pkg"
               echo '```'
-              npm ls "$pkg" --all 2>&1 | head -40
+              npm ls "$pkg" --all 2>&1 | head -30 || true
               echo '```'
             done
             echo ""
-            echo "#### npm outdated (direct dependencies)"
+            echo "#### npm outdated"
             echo '```'
-            npm outdated 2>&1 | head -40
+            npm outdated 2>&1 | head -40 || true
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
-          # The compact version, as annotations: for each vulnerable package,
-          # the top-level dependency it hangs from. `npm ls --parseable` prints
-          # paths under node_modules; the first segment after the first
-          # node_modules/ is the direct dependency responsible.
-          for pkg in protobufjs brace-expansion tar minimatch linkify-it; do
-            npm ls "$pkg" --all --parseable 2>/dev/null \
+          # The part that must reach the API. For each vulnerable package, the
+          # DIRECT dependency it hangs from: npm ls --parseable prints absolute
+          # paths, and the first segment after the first node_modules/ is the
+          # top-level package responsible.
+          for pkg in $PKGS; do
+            out=$(npm ls "$pkg" --all --parseable 2>/dev/null || true)
+            if [ -z "$out" ]; then
+              echo "::notice title=NodeDep::$pkg <- (not in tree)"
+              continue
+            fi
+            printf '%s\n' "$out" \
               | sed "s#^$PWD/node_modules/##" \
-              | awk -F'/node_modules/' 'NF>1 {print $1}' \
-              | sort -u | head -4 \
-              | while read -r owner; do
+              | awk -F'/node_modules/' '{print $1}' \
+              | grep -v '^/' | sort -u | head -4 \
+              | while IFS= read -r owner; do
                   [ -n "$owner" ] && echo "::notice title=NodeDep::$pkg <- $owner"
                 done
           done
 
-          echo "--- npm outdated, machine readable ---"
           npm outdated --json 2>/dev/null \
             | jq -r 'to_entries[] | "::notice title=NodeOutdated::\(.key) \(.value.current) -> \(.value.latest)"' \
-            | head -20 || true
+            2>/dev/null | head -20 || true
+
+          exit 0
