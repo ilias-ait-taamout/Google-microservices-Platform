@@ -1,0 +1,99 @@
+# Maintenance workflow: raise the Python services' vulnerable dependencies.
+#
+# Same shape and the same reasoning as bump-go-deps.yml. Not part of the
+# pipeline: a dependency bump is a decision, not something a build should do
+# behind your back. It runs when you push a change to this file, and the commit
+# it makes then triggers build-push for the rescan.
+#
+# The vulnerable packages are TRANSITIVE - pinned in requirements.txt by
+# pip-compile but absent from requirements.in - so they are named explicitly
+# with --upgrade-package. That is the precise analogue of naming modules in
+# `go get -u`, and it is why a bare `pip-compile --upgrade` is not used here: it
+# would move every pin at once and make a failure impossible to attribute.
+#
+# Dependabot is the proper long-term answer. Remove or replace at task 22.
+name: bump-python-deps
+
+on:
+  push:
+    branches: [feature/phase3-cicd]
+    paths:
+      - '.github/workflows/bump-python-deps.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    concurrency: bump-python-deps
+    strategy:
+      # Sequential: each leg commits to the same branch, and in parallel all
+      # but one push would be rejected.
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        service: [emailservice, recommendationservice, loadgenerator]
+
+    name: ${{ matrix.service }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # Matches the image the Dockerfiles pin. Resolving against a
+          # different interpreter can pick different wheels.
+          python-version: '3.14'
+
+      - name: Recompile the pins
+        working-directory: src/${{ matrix.service }}
+        run: |
+          set -euxo pipefail
+          python -m pip install --upgrade pip pip-tools
+
+          # Only the packages Trivy flagged. pyasn1-modules travels with
+          # pyasn1 and pip-compile will refuse an inconsistent pair otherwise.
+          pip-compile --quiet --strip-extras \
+            --upgrade-package urllib3 \
+            --upgrade-package pyasn1 \
+            --upgrade-package pyasn1-modules \
+            --upgrade-package msgpack \
+            --upgrade-package setuptools \
+            requirements.in
+
+          echo "--- resulting versions ---"
+          grep -nE '^(urllib3|pyasn1|pyasn1-modules|msgpack|setuptools)==' requirements.txt || true
+
+          # Install into a throwaway environment: a resolvable requirements.txt
+          # that cannot actually be installed is worse than no change at all,
+          # and the image build would only find out three minutes later.
+          python -m venv /tmp/verify
+          /tmp/verify/bin/pip install --quiet -r requirements.txt
+          echo "install OK"
+
+      - name: Commit and push
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          if git diff --quiet -- "src/$SERVICE/requirements.txt"; then
+            echo "$SERVICE: already current." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "src/$SERVICE/requirements.txt"
+          git commit -m "fix($SERVICE): raise urllib3, pyasn1 and msgpack past the Trivy gate" \
+                     -m "Automated by .github/workflows/bump-python-deps.yml. These are transitive pins produced by pip-compile, so they are named explicitly with --upgrade-package rather than moved by a blanket --upgrade. requirements.in is untouched."
+          git push
+          {
+            echo "### $SERVICE"
+            echo '```diff'
+            git show --unified=0 HEAD -- "src/$SERVICE/requirements.txt" | grep -E '^[+-][a-z]' | head -20
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
