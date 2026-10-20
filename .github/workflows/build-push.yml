@@ -191,36 +191,79 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      # Two scans on purpose. The first always succeeds and produces the full
-      # picture for the record; the second is the gate. One scan cannot do both,
-      # because a gate that fails stops the job before any report is written.
-      - name: Trivy - full report, never fails
+      # ONE scan, in JSON, and the gate is computed from it with jq.
+      #
+      # It used to be two trivy invocations - one for the report, one for the
+      # gate - because a failing gate stops the job before a report is written.
+      # With eleven services in parallel that was 22 vulnerability-database
+      # downloads per run, and the gate's rule lived inside an action's inputs
+      # where it could not be read. Scanning once and deciding in jq halves the
+      # downloads and puts the rule in plain sight.
+      - name: Trivy - scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.meta.outputs.image }}
-          format: table
-          output: trivy-report.txt
+          format: json
+          output: trivy-report.json
           exit-code: '0'
           severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          scanners: vuln
 
-      - name: Trivy - the gate
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ steps.meta.outputs.image }}
-          exit-code: '1'
-          severity: 'HIGH,CRITICAL'
-          # Skips vulnerabilities with no fix available upstream. Without it the
-          # pipeline blocks on CVEs nobody can patch, and the only way forward
-          # would be to disable the scan. A threshold that is respected beats a
-          # stricter one that gets bypassed.
-          ignore-unfixed: true
+      - name: Trivy - gate and summary
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+
+          # The gate: HIGH or CRITICAL, and a fix exists upstream. A finding
+          # with no FixedVersion cannot be acted on, and blocking on it would
+          # only teach people to disable the scan.
+          BLOCKING=$(jq '[.Results[]? | (.Vulnerabilities // [])[]
+            | select(.Severity=="HIGH" or .Severity=="CRITICAL")
+            | select(.FixedVersion != null and .FixedVersion != "")] | length' trivy-report.json)
+          TOTAL=$(jq '[.Results[]? | (.Vulnerabilities // [])[]] | length' trivy-report.json)
+
+          {
+            echo "### \`$SERVICE\` - $BLOCKING blocking, $TOTAL total"
+            echo ""
+            echo "| target | findings |"
+            echo "|---|---|"
+            jq -r '.Results[]? | "| \(.Target) | \((.Vulnerabilities // []) | length) |"' trivy-report.json
+            if [ "$BLOCKING" -gt 0 ]; then
+              echo ""
+              echo "**Blocking (HIGH/CRITICAL with a fix available):**"
+              echo ""
+              echo "| package | installed | fix | count |"
+              echo "|---|---|---|---|"
+              jq -r '
+                [.Results[]? | (.Vulnerabilities // [])[]
+                 | select(.Severity=="HIGH" or .Severity=="CRITICAL")
+                 | select(.FixedVersion != null and .FixedVersion != "")]
+                | group_by(.PkgName)
+                | map({pkg: .[0].PkgName, installed: .[0].InstalledVersion,
+                       fix: (map(.FixedVersion) | map(split(", ")[0]) | sort | last),
+                       n: length})
+                | sort_by(-.n)[]
+                | "| `\(.pkg)` | \(.installed) | \(.fix) | \(.n) |"
+              ' trivy-report.json
+              echo ""
+              echo "_The fix column is the highest version seen, sorted as text -"
+              echo "a hint for where to aim, not an authority._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$BLOCKING" -gt 0 ]; then
+            echo "::error title=Trivy::$SERVICE - $BLOCKING fixable HIGH/CRITICAL findings"
+            exit 1
+          fi
+          echo "$SERVICE: clean."
 
       - name: Archive the Trivy report
         if: always()  # the report matters most when the gate failed
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-${{ matrix.service }}-${{ steps.meta.outputs.tag }}
-          path: trivy-report.txt
+          path: trivy-report.json
           retention-days: 30
 
       # Only now. Everything is already in the layer cache, so this is seconds.
