@@ -190,7 +190,12 @@ jobs:
       #
       # Quatre a la fois etale la charge sans allonger beaucoup le run : les
       # couches sont deja en cache, c'est la signature qui prend le temps.
-      max-parallel: 4
+      # UN SEUL a la fois. Deux signatures simultanees suffisent a declencher
+      # les refus observes le 22 octobre ; en sequentiel, chaque service
+      # dialogue seul avec Fulcio, Rekor et Docker Hub. Le cout est du temps
+      # d'horloge, pas de la fiabilite : les couches sont en cache, c'est la
+      # signature qui prend le temps.
+      max-parallel: 1
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
 
@@ -383,15 +388,20 @@ jobs:
           cosign version
           # Fulcio et Rekor limitent le debit. Sous charge parallele, un refus
           # n'est pas un probleme de signature mais un probleme de cadence.
+          LOG=/tmp/cosign-sign.log
           for attempt in 1 2 3 4; do
-            if cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"; then
+            if cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST" 2>&1 | tee "$LOG"; then
               echo "Signe a la tentative $attempt."
               exit 0
             fi
             echo "Tentative $attempt refusee. Attente $((attempt * 15))s."
             sleep $((attempt * 15))
           done
-          echo "::error title=Cosign::Signature impossible apres 4 tentatives."
+          # La raison de l'echec doit sortir du job : les journaux exigent des
+          # identifiants, les annotations non. Sans cela on diagnostique a
+          # l'aveugle, ce qui a deja coute une hypothese fausse aujourd'hui.
+          RAISON=$(tr '\n' ' | ' < "$LOG" | tail -c 400)
+          echo "::error title=Cosign-sign::$SERVICE - echec apres 4 tentatives : $RAISON"
           exit 1
 
       # Cheap, and it records WHERE the signature lives: cosign v3 attaches it
@@ -438,7 +448,11 @@ jobs:
             echo "Tentative $attempt : l'index n'a pas rattrape. Attente ${D}s."
             sleep "$D"
           done
-          echo "::error title=Cosign::Signature non verifiable apres $attempt tentatives (250 s)."
+          RAISON=$(cosign verify \
+                     --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+                     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                     "$REF" 2>&1 | tr '\n' ' | ' | tail -c 400)
+          echo "::error title=Cosign-verify::$SERVICE - non verifiable apres $attempt tentatives : $RAISON"
           exit 1
 
       - name: Summary
