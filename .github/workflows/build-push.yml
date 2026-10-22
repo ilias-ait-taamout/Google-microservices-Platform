@@ -369,3 +369,206 @@ jobs:
             echo "| Trivy | HIGH,CRITICAL, unfixed ignored - no findings |"
             echo "| Signature | keyless, verified against this repository |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Marqueur : ce service a bien été publié ET vérifié. Le job `bump` les
+      # ramasse pour savoir quels tags il a le droit de bouger.
+      #
+      # Pas de `if: always()` : un service dont le verrou Trivy a bloqué ne doit
+      # PAS laisser de marqueur, parce que son image n'existe pas. L'overlay
+      # garde alors l'image v0.10.5 de Google — c'est exactement ce qui rend le
+      # déploiement service par service possible (décision D).
+      - name: Record that this service was published
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p built
+          echo "$DIGEST" > "built/${{ matrix.service }}"
+
+      - name: Upload the build marker
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: built-${{ matrix.service }}
+          path: built/
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Tâche 10 — ADR-004 : écrire le nouveau tag dans l'overlay dev et le pousser.
+  #
+  # UN SEUL job, pas onze. Onze jobs qui poussent chacun un commit sur la même
+  # branche entreraient en collision, et onze commits voudraient dire onze
+  # synchronisations ArgoCD pour un seul changement de code. Chaque job de build
+  # dépose un marqueur ; celui-ci les ramasse et produit UN commit.
+  #
+  # ADR-004 : la CI pousse directement sur la branche d'environnement avec
+  # [skip ci]. L'exception à « jamais de push direct » est écrite dans l'ADR :
+  # la règle existe pour empêcher un HUMAIN de contourner une revue, et le
+  # changement de tag est un fait dérivé, pas une nouvelle décision.
+  # ---------------------------------------------------------------------------
+  bump:
+    needs: [changes, build]
+    # `!cancelled()` et non `success()` : si 7 services sur 11 échouent au verrou
+    # Trivy, le job `build` est en échec, mais les 4 qui sont passés doivent
+    # quand même être déployés.
+    if: >-
+      ${{ !cancelled()
+          && needs.changes.outputs.services != '[]'
+          && (github.ref_name == 'develop' || github.ref_name == 'feature/phase3-cicd') }}
+    runs-on: ubuntu-24.04
+
+    permissions:
+      # Le SEUL endroit du dépôt qui écrit dans Git, et c'est au niveau du job :
+      # les onze jobs de build restent en `contents: read`.
+      contents: write
+
+    concurrency:
+      # Deux runs qui se chevauchent pousseraient sur la même branche. On
+      # sérialise au lieu d'annuler : chaque bump doit aboutir.
+      group: bump-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      OVERLAY: kustomize/overlays/dev
+      UPSTREAM: us-central1-docker.pkg.dev/google-samples/microservices-demo
+      KUSTOMIZE_VERSION: v5.8.1
+      # Même principe que l'épinglage des actions par SHA : un fichier de
+      # release est lui aussi un pointeur mutable. Somme relevée sur
+      # checksums.txt de la release, pas recopiée de mémoire.
+      KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+
+    steps:
+      - name: Checkout the branch itself, not the detached commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Sur un événement `push`, checkout laisse le dépôt en HEAD détaché :
+          # on ne peut pas pousser depuis là, il faut la branche.
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+
+      - name: Collect the services that were actually published
+        id: markers
+        continue-on-error: true   # aucun artefact = aucun service publié, ce n'est pas une erreur
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: built-*
+          merge-multiple: true
+          path: built
+
+      - name: Install kustomize, verified by checksum
+        run: |
+          set -euo pipefail
+          cd /tmp
+          TARBALL="kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          curl -sSLO "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${TARBALL}"
+          echo "${KUSTOMIZE_SHA256}  ${TARBALL}" | sha256sum --check --strict
+          tar -xzf "$TARBALL"
+          sudo install -m 0755 kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Rewrite the dev overlay image tags
+        id: edit
+        run: |
+          set -euo pipefail
+          TAG="sha-${GITHUB_SHA::7}"
+
+          if [ ! -d built ] || [ -z "$(ls -A built 2>/dev/null)" ]; then
+            echo "Aucun service publié par ce run — rien à bumper."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SERVICES=$(ls built | sort | tr '\n' ' ')
+          echo "Services publiés : $SERVICES"
+
+          # `kustomize edit set image` plutôt qu'un sed : l'outil comprend la
+          # structure du fichier et ne peut pas produire un YAML invalide.
+          # Il resérialise tout le fichier (clés réordonnées, champs laissés à
+          # leur défaut omis) mais conserve les commentaires, et le rendu est
+          # identique — vérifié par un `kustomize build` avant/après qui ne
+          # diffère que sur les lignes `image:`.
+          cd "$OVERLAY"
+          for SERVICE in $SERVICES; do
+            kustomize edit set image "${UPSTREAM}/${SERVICE}=${IMAGE_OWNER}/${SERVICE}:${TAG}"
+          done
+          cd - > /dev/null
+
+          if git diff --quiet -- "$OVERLAY/kustomization.yaml"; then
+            echo "Les tags étaient déjà à jour."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "services=$SERVICES"
+            echo "count=$(echo $SERVICES | wc -w)"
+            echo "changed=true"
+          } >> "$GITHUB_OUTPUT"
+
+          git --no-pager diff -- "$OVERLAY/kustomization.yaml"
+
+      - name: Prove the overlay still renders
+        if: steps.edit.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Pousser un overlay qui ne rend pas, c'est casser ArgoCD pour tout le
+          # monde. Le contrôle coûte une seconde.
+          kustomize build "$OVERLAY" > /tmp/render.yaml
+          echo "Rendu : $(grep -c '^---' /tmp/render.yaml) documents, $(wc -l < /tmp/render.yaml) lignes."
+          grep -E '^\s+image: ' /tmp/render.yaml | sort -u
+
+      - name: Commit and push
+        if: steps.edit.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.edit.outputs.tag }}
+          SERVICES: ${{ steps.edit.outputs.services }}
+          COUNT: ${{ steps.edit.outputs.count }}
+        run: |
+          set -euo pipefail
+
+          # Identité de robot, pas celle d'Ilias : `git log --author` doit
+          # rester exploitable (ADR-004). 41898282 est l'identifiant de
+          # github-actions[bot], relevé sur l'API, pas recopié de mémoire.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "$OVERLAY/kustomization.yaml"
+
+          # [skip ci] est EXIGÉ par ADR-004. Sans lui : le bump déclenche un
+          # build, qui produit un bump, qui déclenche un build. Un push fait
+          # avec le GITHUB_TOKEN par défaut ne déclenche déjà aucun workflow,
+          # mais s'appuyer sur ce comportement implicite serait fragile — un
+          # jeton d'application GitHub, lui, les déclencherait.
+          git commit \
+            -m "ci(dev): image $TAG sur $COUNT service(s) [skip ci]" \
+            -m "Services: $SERVICES" \
+            -m "Produit par le run $GITHUB_RUN_ID."
+
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Poussé à la tentative $attempt."
+              exit 0
+            fi
+            echo "Push refusé — la branche a bougé. Rebase puis nouvelle tentative."
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            sleep 3
+          done
+          echo "::error title=Bump::Le bump n'a pas pu être poussé après 3 tentatives."
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Bump de l'overlay \`dev\`"
+            echo ""
+            if [ "${{ steps.edit.outputs.changed }}" = "true" ]; then
+              echo "| | |"
+              echo "|---|---|"
+              echo "| tag | \`${{ steps.edit.outputs.tag }}\` |"
+              echo "| services | ${{ steps.edit.outputs.services }} |"
+              echo "| branche | \`${GITHUB_REF_NAME}\` |"
+            else
+              echo "Aucun changement : soit aucun service n'a été publié par ce run,"
+              echo "soit les tags étaient déjà à jour."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,30 +1,50 @@
 # Overlay dev — Online Boutique in namespace `dev` on the shared k3s cluster.
 # Google's base/ is consumed as-is (decision C); every difference is below.
+#
+# FORMAT — read this before reformatting the file by hand.
+# This file is rewritten by `kustomize edit set image` in the `bump` job of
+# .github/workflows/build-push.yml (ADR-004). kustomize re-serialises the whole
+# file: it KEEPS comments, but it reorders keys and omits any field left at its
+# default value. Two consequences:
+#   1. list indentation is kustomize's own (no two-space indent under a key);
+#   2. `includeSelectors: false` no longer appears below — false IS the default.
+# Verified rather than assumed: `kustomize build` before and after the edit
+# differs only on the `image:` lines, nothing else.
+#
+# The point `includeSelectors: false` used to make is too important to lose, so
+# it is recorded here instead: the overlay's labels must NEVER enter selectors.
+# A Deployment's spec.selector is immutable after creation, and every
+# NetworkPolicy podSelector matches on `app` alone — had `environment` been
+# injected into them, no policy would match anything.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base
-  - namespace.yaml
+- ../../base
+- namespace.yaml
 
 namespace: dev
 
 # `labels` rather than the deprecated `commonLabels`: selectors are immutable
 # on Deployments, so they must never carry labels we might change later.
 labels:
-  - pairs:
-      environment: dev
-      app.kubernetes.io/part-of: online-boutique
-    includeSelectors: false
-    includeTemplates: true
+- includeTemplates: true
+  pairs:
+    app.kubernetes.io/part-of: online-boutique
+    environment: dev
 
 patches:
-  - path: frontend-external-nodeport.yaml
+- path: frontend-external-nodeport.yaml
 
-# Pin the two third-party images the base leaves floating. Google's 11
-# microservice images stay at v0.10.5.
+# Pin the two third-party images the base leaves floating.
+#
+# Everything BELOW the two entries here is written by CI. kustomize keeps the
+# list sorted by `name`, and the upstream registry sorts after `busybox` and
+# `redis`, so the machine-owned entries always land at the end. A service CI
+# has not published yet simply has no entry and keeps Google's v0.10.5 image —
+# which is what makes a service-by-service rollout possible (decision D).
 images:
-  - name: redis
-    newTag: 7.4-alpine
-  - name: busybox
-    newTag: "1.37"
+- name: busybox
+  newTag: "1.37"
+- name: redis
+  newTag: 7.4-alpine
