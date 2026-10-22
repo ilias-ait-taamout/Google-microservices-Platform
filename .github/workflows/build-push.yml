@@ -376,6 +376,21 @@ jobs:
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
+      # cosign ne reprend PAS les identifiants de docker/login-action : il
+      # interroge Docker Hub de facon anonyme et tombe donc sous la limite
+      # anonyme de 100 requetes / 6 h, PARTAGEE par adresse IP avec tous les
+      # autres runners GitHub. C'est l'erreur observee le 22 octobre :
+      #   TOOMANYREQUESTS: You have reached your unauthenticated pull rate limit
+      # sur un GET de manifeste, pendant `cosign sign`.
+      #
+      # Authentifie, le quota devient celui du compte (200 / 6 h) et n'est plus
+      # partage avec des inconnus.
+      - name: Log cosign in to the registry
+        env:
+          U: ${{ vars.DOCKERHUB_USERNAME }}
+          P: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: cosign login index.docker.io -u "$U" -p "$P"
+
       # Sign the DIGEST, never the tag. A tag is a movable pointer - the same
       # reason every action here is pinned by SHA. Signing a tag would prove
       # nothing about the bytes pulled later.
@@ -407,8 +422,10 @@ jobs:
       # Cheap, and it records WHERE the signature lives: cosign v3 attaches it
       # as an OCI 1.1 referrer, not as the legacy sha256-<digest>.sig tag. No
       # .sig tag ever appears on Docker Hub, and hunting for one is a dead end.
+      # Chaque invocation coute un pull, compte dans le quota. On ne la fait
+      # donc que lorsqu'elle sert a quelque chose : un echec a diagnostiquer.
       - name: Show what is attached to the digest
-        if: always()
+        if: failure()
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
           SERVICE: ${{ matrix.service }}
@@ -436,7 +453,11 @@ jobs:
           # baisse pas l'exigence : la verification reste fatale, parce qu'une
           # signature invérifiable rend la signature decorative.
           attempt=0
-          for D in 10 15 20 25 30 30 30 30 30 30; do
+          # ATTENTION : chaque tentative est un PULL, compte dans le quota du
+          # registre. Dix tentatives x onze services, c'etait plus de cent
+          # requetes pour la seule verification -- le garde-fou devenait la
+          # cause de la panne. Six tentatives bien reparties couvrent 150 s.
+          for D in 10 20 30 30 30 30; do
             attempt=$((attempt + 1))
             if cosign verify \
                  --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
