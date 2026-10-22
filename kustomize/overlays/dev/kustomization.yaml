@@ -22,6 +22,7 @@ kind: Kustomization
 resources:
 - ../../base
 - namespace.yaml
+- ingress.yaml
 
 namespace: dev
 

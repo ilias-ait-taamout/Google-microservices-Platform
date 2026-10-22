@@ -1,0 +1,42 @@
+# Ingress Traefik pour l'environnement dev — tache 18, decision G.
+#
+# Nom d'hote : dev.15.237.184.165.sslip.io
+#
+# sslip.io resout n'importe quel nom contenant une adresse IP vers cette
+# adresse : aucun domaine a acheter, aucun DNS a exploiter. C'est ce qui rend
+# un Ingress a nom d'hote possible sur ce projet sans rien payer.
+#
+# CONTRAINTE ASSUMEE, et c'est une vraie limite du GitOps : l'adresse IP
+# publique du cluster CHANGE a chaque reconstruction, et ce nom d'hote est
+# dans Git. Git ne peut pas connaitre l'adresse d'un cluster qui n'existe pas
+# encore. Apres chaque `cluster.ps1 up`, les trois Ingress doivent donc etre
+# reecrits et commites, sinon ArgoCD deploie un nom d'hote perime.
+#
+# Les reponses normales a ce probleme sont un vrai domaine avec son DNS, une
+# adresse IP elastique, ou ExternalDNS. Le projet n'a aucune des trois, par
+# decision de cout : pas de NAT, pas d'EIP, pas de domaine. La contrainte est
+# donc la consequence directe d'un arbitrage economique, pas un oubli.
+#
+# C'est aussi la raison pour laquelle les Services NodePort sont CONSERVES
+# (tache 19 differee) : ils restent joignables meme quand ce nom d'hote est
+# perime, et une demonstration ne peut pas dependre d'un commit prealable.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: online-boutique
+  labels:
+    app: frontend
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: dev.15.237.184.165.sslip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # le Service INTERNE (ClusterIP, port 80), pas frontend-external
+                name: frontend
+                port:
+                  number: 80

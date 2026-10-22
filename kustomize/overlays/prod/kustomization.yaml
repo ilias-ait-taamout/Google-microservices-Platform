@@ -8,6 +8,7 @@ resources:
   - ../../base
   - namespace.yaml
   - frontend-pdb.yaml
+  - ingress.yaml
 
 # Same two components as staging, for the same reasons - see
 # overlays/staging/kustomization.yaml for the full note on what a Component is

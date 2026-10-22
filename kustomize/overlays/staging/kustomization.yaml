@@ -7,6 +7,7 @@ kind: Kustomization
 resources:
   - ../../base
   - namespace.yaml
+  - ingress.yaml
 
 # A Component is a kustomization of `kind: Component`. Unlike a resource it can
 # both ADD resources and PATCH what is already there, and it is applied after

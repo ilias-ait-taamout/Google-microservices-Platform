@@ -280,12 +280,12 @@ end, eleven services out of eleven published and signed.**
 ### CD
 - [x] **11.** `kustomize/argocd/` — ArgoCD as a remote base (decision E),
       **pinned to an exact version**, with our patches
-- [ ] **12.** Install it, reach the UI, change the admin password
-- [ ] **13.** Three ArgoCD `Application`s per decision F and ADR-003:
+- [x] **12.** Install it, reach the UI, change the admin password
+- [x] **13.** Three ArgoCD `Application`s per decision F and ADR-003:
       dev/`develop` auto-sync, staging/`release` auto-sync, prod/`main` manual
-- [ ] **14.** Full pipeline test: push to `src/frontend`, watch the image get
+- [x] **14.** Full pipeline test: push to `src/frontend`, watch the image get
       built, scanned, signed, bumped, and deployed to dev with no manual step
-- [ ] **15.** Rollback test: `git revert` the bump, confirm ArgoCD rolls back.
+- [x] **15.** Rollback test: `git revert` the bump, confirm ArgoCD rolls back.
       That is the whole point of an immutable tag — prove it
 
 ### Ingress (decision G)
@@ -295,7 +295,7 @@ end, eleven services out of eleven published and signed.**
       `allow_http_from_internet` variable exists but `envs/dev/main.tf`
       hardcodes it to `false`, and it would open 80 to `0.0.0.0/0` anyway —
       a separate rule scoped to `admin_cidr` is the right fix
-- [ ] **18.** One `Ingress` per overlay on `<env>.<node-ip>.sslip.io`.
+- [x] **18.** One `Ingress` per overlay on `<env>.<node-ip>.sslip.io`.
       Traefik's Service is type `LoadBalancer`, which k3s's ServiceLB binds to
       host ports 80/443 on every node — hence task 17
 - [ ] **19.** Switch the overlays to `components/non-public-frontend`, which
@@ -329,6 +329,49 @@ to 0.0.0.0/0. 443 stays closed until there is a certificate to serve on it.
 
 Both change `user_data`, so the instances are replaced on the next `up`. That
 is why these tasks come before the cluster is started and not after.
+
+
+**Tasks 12 to 15 and 18 done (22 October 2026), on a live cluster.**
+
+ArgoCD v3.5.6 runs with five pods, not seven: dex and notifications are scaled
+to zero. Three Applications, dev and staging syncing automatically, prod
+`OutOfSync` until synced by hand -- ADR-003 visible on screen.
+
+Task 14, the full chain, measured end to end: a one-line change to the
+frontend footer produced a matrix of exactly ONE service, a build, a Trivy
+pass, a push, a keyless signature, a verification, a one-line bump commit from
+the bot carrying the skip-CI marker, an ArgoCD sync, and a pod restart. No
+manual step anywhere between the push and the page changing in the browser.
+That bot commit triggered no run, confirming the anti-loop design once more.
+
+Task 15, the rollback: `git revert` of the bump put the frontend back to
+sha-b66979a and the footer marker DISAPPEARED. That disappearance is the proof
+the whole phase 0 argument rested on -- if tags were mutable, reverting would
+restore a name rather than an artefact. Nothing was rebuilt in either
+direction; only a pointer in Git moved.
+
+`git revert` rather than ArgoCD's own rollback button, and the reason matters:
+with `selfHeal: true` a rollback done in the UI makes the cluster diverge from
+Git, and ArgoCD undoes it immediately. The two features contradict each other.
+Git as the single source of truth is not a slogan here, it is the only
+coherent way to roll back a self-healing Application.
+
+One result worth keeping from task 13: in dev, ten services carried
+sha-b66979a while adservice carried sha-a5d9478 -- the run where adservice
+could not be signed left no marker, so its tag was never bumped and the
+cluster kept running the last image whose signature had been verified. The
+chain refused to deploy an unverified artefact on its own.
+
+**Task 19 is deliberately deferred, with a measured reason.** The Ingress
+hostnames embed the cluster's public IP through sslip.io, and that IP changes
+on every rebuild. Git cannot know the address of a cluster that does not exist
+yet, so after each `up` the three Ingress have to be rewritten AND committed
+before ArgoCD serves the right host. The normal answers -- a real domain with
+DNS, an elastic IP, ExternalDNS -- are all excluded by the project's cost
+decisions. The NodePort Services are therefore kept: they stay reachable when
+the hostname is stale, and a demonstration cannot depend on a commit being
+pushed first. The `Service Type` finding in the security baseline stays open
+for that reason, which is a trade-off rather than an oversight.
 
 ### Validation and close
 - [ ] **20.** Three environments through the Ingress, three hostnames, and the
