@@ -638,7 +638,6 @@ jobs:
           done
 
           echo "::notice title=Integration::$N_PUB/$N_ATT publies"
-          echo "::notice title=Publies::${PUBLIES:-aucun}"
           if [ -n "$BLOQUES" ]; then
             echo "::notice title=Bloques::$BLOQUES"
           else
@@ -653,7 +652,21 @@ jobs:
             echo "| services construits | $N_ATT |"
             echo "| publiés et signés | **$N_PUB** |"
             echo "| bloqués par le verrou | ${BLOQUES:-aucun} |"
+            echo ""
+            echo "### Inventaire des artefacts produits"
+            echo ""
+            echo "| service | image | digest |"
+            echo "|---|---|---|"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          # L'inventaire : quel service, quelle image, quel digest. C'est ce qui
+          # permet de relier plus tard un pod en execution a l'octet pres au run
+          # qui l'a produit -- et c'est ce que la tache 15 (rollback) utilisera.
+          for S in $(ls built 2>/dev/null | sort); do
+            D=$(cat "built/$S")
+            echo "::notice title=Artefact::$S $IMAGE_OWNER/$S@$D"
+            echo "| \`$S\` | \`$IMAGE_OWNER/$S\` | \`$D\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Summary
         if: always()

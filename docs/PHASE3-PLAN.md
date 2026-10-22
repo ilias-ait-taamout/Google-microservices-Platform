@@ -244,10 +244,38 @@ what it has not checked is worse than no summary. It now runs only after a
 successful verification, which is what makes the line true.
 
 ### CI — generalise
-- [ ] **9.** Matrix over the 11 services with `dorny/paths-filter`, so an
+- [x] **9.** Matrix over the 11 services with `dorny/paths-filter`, so an
       unchanged service is not rebuilt. Exclude `shoppingassistantservice`
-- [ ] **10.** Tag-bump workflow per ADR-004, writing into the overlay's
+- [x] **10.** Tag-bump workflow per ADR-004, writing into the overlay's
       `images:` block
+
+
+**Tasks 9 and 10 done (22 October 2026), and the open defect of task 9 is
+fixed.**
+
+The path filter was comparing against the DEFAULT BRANCH, not the previous
+push. On a feature branch that means comparing against `main`, so everything
+the branch had accumulated counted as changed -- and since `main` does not yet
+contain `build-push.yml`, which every filter lists, all eleven filters matched.
+Measured: `diff(main, 8292f0a)` touches ten service directories plus the
+workflow file, `diff(previous push, 8292f0a)` touches four. Fixed by passing
+`github.event.before` as the base, with a deliberate fallback to rebuilding
+everything when no usable base exists. Proven: a later run built **one**
+service, another built **four**.
+
+Task 10 is one `bump` job, not eleven. Each build job uploads a marker
+artifact for the service it actually published and verified; `bump` collects
+them and produces a single commit. A service blocked by the gate leaves no
+marker, so its tag is not moved and the overlay keeps Google's image -- which
+is what makes the service-by-service rollout possible.
+
+`kustomize edit set image` was chosen over `sed` after checking what it does
+to the file: it re-serialises everything and drops fields left at their
+default (`includeSelectors: false` disappears) but keeps comments, and
+`kustomize build` is byte-identical before and after.
+
+**Integration phase complete: 409 blocking findings at the start, 0 at the
+end, eleven services out of eleven published and signed.**
 
 ### CD
 - [ ] **11.** `kustomize/argocd/` — ArgoCD as a remote base (decision E),
