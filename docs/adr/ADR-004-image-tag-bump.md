@@ -78,3 +78,44 @@ same line.
 - Only the overlays' `images:` transformer is ever edited. `base/` is never
   touched (decision C), so a service CI has not built yet keeps Google's
   image and the cluster stays deployable throughout the rollout.
+
+---
+
+## Correction — 22 October 2026
+
+One sentence of the Consequences above was wrong, and a live test is what
+found it.
+
+> *"Promotion dev → staging → prod stays an ordinary GitFlow merge: the tag
+> travels with the overlay file. No separate promotion tooling."*
+
+True for **one** overlay file. With one file per environment, the tag
+travelled in `kustomize/overlays/dev/kustomization.yaml` — which `staging` and
+`prod` never read. The merge promoted a file nobody was looking at.
+
+**Observed, not deduced.** After merging `develop` into `release`, staging
+received the Traefik Ingress and kept running Google's `v0.10.5` images. The
+model had been designed, implemented and reviewed; only running it against a
+cluster showed that it promoted the overlay and not the images.
+
+**Fix.** The CI-managed `images:` block now lives in a single shared
+Component, `kustomize/ci-images/`, referenced by all three overlays. The bump
+job writes there and nowhere else. Each branch carries its own copy of that
+file, so a merge now genuinely promotes the images, which is what the sentence
+above always claimed.
+
+Verified before being committed: with the component in place, the `dev` render
+is byte-identical to what it was, and the `staging` and `prod` renders differ
+only on their `image:` lines. `kustomize edit set image` works on a Component
+and preserves both its comments and its `kind`.
+
+The component sits under `kustomize/` and not under `kustomize/components/`,
+because the latter is Google's and decision C forbids touching it.
+
+**What this says beyond the fix.** A design can be internally coherent, pass
+review, and still be wrong about the world. The statement "the tag travels
+with the overlay file" was never tested against the question "which file does
+each environment actually read?". That is the same lesson as phase 2's
+positive control, applied to a design rather than to a measurement: a claim
+that has not been confronted with reality is a hypothesis, however reasonable
+it sounds.

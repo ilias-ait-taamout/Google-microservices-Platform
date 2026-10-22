@@ -1,0 +1,57 @@
+# Images construites par la CI — le SEUL fichier que le job `bump` modifie.
+#
+# POURQUOI CE COMPOSANT EXISTE
+#
+# L'ADR-004 affirmait : « la promotion dev -> staging -> prod reste une fusion
+# GitFlow ordinaire : le tag voyage avec le fichier d'overlay ». C'etait vrai
+# pour UN SEUL fichier d'overlay. Avec un fichier par environnement, le tag
+# voyageait dans `overlays/dev/kustomization.yaml` — que `staging` et `prod`
+# ne lisent pas. La fusion promouvait le fichier sans promouvoir les images.
+#
+# Defaut trouve par un test en direct, pas par relecture : apres la fusion
+# develop -> release, staging avait bien recu l'Ingress et tournait toujours
+# sur les images v0.10.5 de Google.
+#
+# Les trois overlays referencent desormais ce composant unique. Le `bump`
+# ecrit ici, et une fusion promeut alors REELLEMENT les images, parce que
+# chaque branche porte sa propre copie de ce fichier.
+#
+# Il est sous `kustomize/` et non sous `kustomize/components/` : ce dernier
+# appartient a Google et la decision C interdit d'y toucher.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+images:
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/adservice
+  newName: iliasroo/adservice
+  newTag: sha-a5d9478
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
+  newName: iliasroo/cartservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
+  newName: iliasroo/checkoutservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice
+  newName: iliasroo/currencyservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice
+  newName: iliasroo/emailservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
+  newName: iliasroo/frontend
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
+  newName: iliasroo/loadgenerator
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice
+  newName: iliasroo/paymentservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice
+  newName: iliasroo/productcatalogservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice
+  newName: iliasroo/recommendationservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
+  newName: iliasroo/shippingservice
+  newTag: sha-b66979a
