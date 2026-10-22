@@ -1,0 +1,80 @@
+# Workflow JETABLE — à supprimer à la tâche 22, comme les trois autres.
+#
+# Pourquoi il existe : les Dockerfiles épinglent leurs images de base par
+# digest (`FROM image:tag@sha256:...`), parce qu'un tag est un pointeur mobile.
+# Pour monter une image de base il faut donc le digest de la nouvelle version,
+# et le registre Docker Hub n'est joignable depuis aucun des environnements de
+# travail. Le runner GitHub, lui, y accède.
+#
+# Même méthode que pour la campagne CVE : le runner résout, émet le résultat
+# en `::notice`, et les annotations sont lisibles via l'API publique sans
+# aucun identifiant. C'est en lecture seule et ça ne touche à rien.
+name: resolve-digests
+
+on:
+  push:
+    branches: [feature/phase3-cicd]
+    paths:
+      - '.github/workflows/resolve-digests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Does the tag even exist, and what Go version does it carry?
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          echo "### Tags golang 1.26.x alpine disponibles" >> "$GITHUB_STEP_SUMMARY"
+          curl -sS "https://hub.docker.com/v2/repositories/library/golang/tags?page_size=100&name=1.26." \
+            | jq -r '.results[].name' | grep -E '^1\.26\.[0-9]+-alpine$' | sort -V | tail -5 \
+            | while read -r t; do
+                echo "::notice title=GolangTag::$t"
+                echo "- $t" >> "$GITHUB_STEP_SUMMARY"
+              done
+
+          # La preuve plutôt que la supposition : on demande à l'image elle-même
+          # quelle version de Go elle contient.
+          V=$(docker run --rm golang:1.26.10-alpine go version 2>&1 || echo "INDISPONIBLE")
+          echo "::notice title=GolangVersion::$V"
+
+      - name: Resolve the digests we need
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # Le digest de l'INDEX (manifest list), pas celui d'une plateforme :
+          # c'est lui qui va dans un FROM et qui reste valable quelle que soit
+          # l'architecture de construction.
+          for REF in \
+            "golang:1.26.10-alpine" \
+            "golang:1.26.9-alpine" \
+            "python:3.14.8-alpine" \
+            "alpine:3.23.6" \
+            "eclipse-temurin:25.0.4.1_1-jre-alpine" \
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0.0-noble-chiseled"
+          do
+            D=$(docker buildx imagetools inspect "$REF" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
+            if [ -n "$D" ]; then
+              echo "::notice title=Digest::$REF@$D"
+            else
+              echo "::notice title=Digest::$REF INTROUVABLE"
+            fi
+          done
+
+      - name: Which newer patch tags exist for the other bases?
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          for REPO in library/python library/alpine; do
+            NAME=$(echo "$REPO" | cut -d/ -f2)
+            curl -sS "https://hub.docker.com/v2/repositories/$REPO/tags?page_size=100" \
+              | jq -r '.results[].name' | sort -V | tail -8 \
+              | while read -r t; do echo "::notice title=Tag-$NAME::$t"; done
+          done
