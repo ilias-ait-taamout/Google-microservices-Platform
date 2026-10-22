@@ -29,7 +29,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: staging.15.237.184.165.sslip.io
+    - host: staging.15.237.248.223.sslip.io
       http:
         paths:
           - path: /
