@@ -611,6 +611,48 @@ jobs:
           echo "::error title=Bump::Le bump n'a pas pu être poussé après 3 tentatives."
           exit 1
 
+      # -----------------------------------------------------------------------
+      # Rapport d'intégration : qui est passé, qui a bloqué.
+      #
+      # Le job `bump` est le seul qui voie TOUS les services à la fois — la
+      # matrice, elle, ne sait rien de ses voisins. Il est donc le seul endroit
+      # d'où l'on puisse répondre à « est-ce que l'ensemble passe ? », et il le
+      # dit en annotations pour que la réponse se lise par l'API publique sans
+      # identifiant.
+      # -----------------------------------------------------------------------
+      - name: Integration report
+        if: always()
+        env:
+          ATTENDUS: ${{ needs.changes.outputs.services }}
+        run: |
+          set -uo pipefail
+          PUBLIES=$(ls built 2>/dev/null | sort | tr '\n' ' ')
+          N_ATT=$(echo "$ATTENDUS" | jq 'length')
+          N_PUB=$(echo "$PUBLIES" | wc -w)
+
+          BLOQUES=""
+          for S in $(echo "$ATTENDUS" | jq -r '.[]'); do
+            [ -f "built/$S" ] || BLOQUES="$BLOQUES $S"
+          done
+
+          echo "::notice title=Integration::$N_PUB/$N_ATT publies"
+          echo "::notice title=Publies::${PUBLIES:-aucun}"
+          if [ -n "$BLOQUES" ]; then
+            echo "::notice title=Bloques::$BLOQUES"
+          else
+            echo "::notice title=Bloques::aucun - tous les services construits sont passes"
+          fi
+
+          {
+            echo "## Rapport d'intégration"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| services construits | $N_ATT |"
+            echo "| publiés et signés | **$N_PUB** |"
+            echo "| bloqués par le verrou | ${BLOQUES:-aucun} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Summary
         if: always()
         run: |

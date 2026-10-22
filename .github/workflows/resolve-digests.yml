@@ -79,6 +79,27 @@ jobs:
             echo "::notice title=Jackson::jackson-databind $V -> HTTP $C"
           done
 
+      # -----------------------------------------------------------------------
+      # La vraie question pour adservice : existe-t-il une version de gRPC-Java
+      # qui declare elle-meme la ligne netty 4.2 ? Si oui, monter gRPC est le
+      # correctif propre, et forcer netty devient inutile. Sinon, il faudra
+      # soit forcer 4.2 et le tester a l'execution, soit exprimer la
+      # non-exploitabilite en VEX.
+      # -----------------------------------------------------------------------
+      - name: Which netty line does each recent gRPC-Java declare?
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          VERSIONS=$(curl -sS "https://repo1.maven.org/maven2/io/grpc/grpc-netty/maven-metadata.xml" \
+            | grep -oE '<version>[^<]+</version>' | sed 's/<[^>]*>//g' \
+            | grep -E '^1\.[0-9]+\.[0-9]+$' | sort -V | tail -6)
+          for V in $VERSIONS; do
+            N=$(curl -sS "https://repo1.maven.org/maven2/io/grpc/grpc-core/$V/grpc-core-$V.pom" \
+              | tr -d '\n' | grep -oE 'netty-codec-http2</artifactId>[^!]{0,120}?<version>[^<]+</version>' \
+              | grep -oE '<version>[^<]+</version>' | sed 's/<[^>]*>//g' | head -1)
+            echo "::notice title=GrpcNetty::grpc-java $V -> netty ${N:-?}"
+          done
+
       - name: Resolve the digests we pin
         continue-on-error: true
         run: |
