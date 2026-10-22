@@ -323,13 +323,14 @@ jobs:
               [.Results[]? | .Target as $t | (.Vulnerabilities // [])[]
                | select(.Severity=="HIGH" or .Severity=="CRITICAL")
                | select(.FixedVersion != null and .FixedVersion != "")
-               | {t: $t, pkg: .PkgName, iv: .InstalledVersion, fv: .FixedVersion}]
-              | group_by(.pkg)
-              | map({pkg: .[0].pkg, t: .[0].t, iv: .[0].iv,
+               | {t: $t, pkg: .PkgName, iv: .InstalledVersion, fv: .FixedVersion,
+                  pp: (.PkgPath // .PkgIdentifier.PURL // "-")}]
+              | group_by([.pkg, .iv])
+              | map({pkg: .[0].pkg, t: .[0].t, iv: .[0].iv, pp: .[0].pp,
                      fv: (map(.fv) | map(split(", ")[0]) | sort | last),
                      n: length})
               | sort_by(-.n)[0:10][]
-              | "::notice title=TrivyPkg::\(.pkg) \(.iv) -> \(.fv) x\(.n) [\(.t)]"
+              | "::notice title=TrivyPkg::\(.pkg) \(.iv) -> \(.fv) x\(.n) [\(.t)] @\(.pp)"
             ' trivy-report.json
 
             exit 1

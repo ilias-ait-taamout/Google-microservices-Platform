@@ -13,7 +13,8 @@ RUN apk update \
 
 COPY requirements.txt .
 
-RUN pip install --prefix="/install" -r requirements.txt
+RUN pip install --prefix="/install" -r requirements.txt \
+    && pip install --prefix="/install" --upgrade "setuptools>=78.1.1"
 
 FROM base
 

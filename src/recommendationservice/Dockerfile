@@ -12,7 +12,8 @@ RUN apk update \
     && rm -rf /var/cache/apk/*
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+    && pip install --upgrade "setuptools>=78.1.1"
 
 FROM base
 

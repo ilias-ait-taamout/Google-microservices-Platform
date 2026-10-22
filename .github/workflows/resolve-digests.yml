@@ -1,14 +1,13 @@
 # Workflow JETABLE — à supprimer à la tâche 22, comme les trois autres.
 #
 # Pourquoi il existe : les Dockerfiles épinglent leurs images de base par
-# digest (`FROM image:tag@sha256:...`), parce qu'un tag est un pointeur mobile.
-# Pour monter une image de base il faut donc le digest de la nouvelle version,
-# et le registre Docker Hub n'est joignable depuis aucun des environnements de
-# travail. Le runner GitHub, lui, y accède.
+# digest, et le registre Docker Hub, le registre Microsoft et Maven Central ne
+# sont joignables depuis aucun environnement de travail. Le runner GitHub, lui,
+# y accède. Il résout, et renvoie le résultat en `::notice` — la seule sortie
+# de CI que l'API publique sert sans identifiant.
 #
-# Même méthode que pour la campagne CVE : le runner résout, émet le résultat
-# en `::notice`, et les annotations sont lisibles via l'API publique sans
-# aucun identifiant. C'est en lecture seule et ça ne touche à rien.
+# En lecture seule : il inspecte des manifestes et liste des versions, il ne
+# construit et ne publie rien.
 name: resolve-digests
 
 on:
@@ -28,53 +27,72 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Does the tag even exist, and what Go version does it carry?
+      # -----------------------------------------------------------------------
+      # .NET — cartservice reste bloqué sur openssl/libssl3t64 dans
+      # runtime-deps:10.0.0-noble-chiseled. Le digest de CE tag n'a pas bougé
+      # (vérifié), donc il faut un tag plus récent, pas le même rafraîchi.
+      # -----------------------------------------------------------------------
+      - name: Which dotnet runtime-deps tags exist?
         continue-on-error: true
         run: |
           set -uo pipefail
-          echo "### Tags golang 1.26.x alpine disponibles" >> "$GITHUB_STEP_SUMMARY"
-          curl -sS "https://hub.docker.com/v2/repositories/library/golang/tags?page_size=100&name=1.26." \
-            | jq -r '.results[].name' | grep -E '^1\.26\.[0-9]+-alpine$' | sort -V | tail -5 \
-            | while read -r t; do
-                echo "::notice title=GolangTag::$t"
-                echo "- $t" >> "$GITHUB_STEP_SUMMARY"
-              done
+          curl -sS "https://mcr.microsoft.com/v2/dotnet/runtime-deps/tags/list" \
+            | jq -r '.tags[]' \
+            | grep -E '^10\.[0-9]+(\.[0-9]+)?-noble-chiseled$' \
+            | sort -V | tail -8 \
+            | while read -r t; do echo "::notice title=DotnetTag::$t"; done
 
-          # La preuve plutôt que la supposition : on demande à l'image elle-même
-          # quelle version de Go elle contient.
-          V=$(docker run --rm golang:1.26.10-alpine go version 2>&1 || echo "INDISPONIBLE")
-          echo "::notice title=GolangVersion::$V"
-
-      - name: Resolve the digests we need
+      # -----------------------------------------------------------------------
+      # Java — netty est tiré transitivement par io.grpc:grpc-netty. Trivy
+      # annonce des correctifs dans DEUX lignes (4.1.136 et 4.2.16/4.2.17) et
+      # les mélanger, ou forcer 4.2 sous un gRPC-Java épinglé sur 4.1, expose à
+      # une panne à l'exécution qui compile proprement. On relève donc d'abord
+      # ce qui existe réellement, et quelle ligne gRPC 1.80.0 attend.
+      # -----------------------------------------------------------------------
+      - name: What netty versions exist, and which one does gRPC expect?
         continue-on-error: true
         run: |
           set -uo pipefail
-          # Le digest de l'INDEX (manifest list), pas celui d'une plateforme :
-          # c'est lui qui va dans un FROM et qui reste valable quelle que soit
-          # l'architecture de construction.
+          for A in netty-codec netty-codec-http netty-codec-http2 netty-handler; do
+            curl -sS "https://repo1.maven.org/maven2/io/netty/$A/maven-metadata.xml" \
+              | grep -oE '<version>[^<]+</version>' | sed 's/<[^>]*>//g' \
+              | grep -E '^4\.(1|2)\.[0-9]+\.Final$' | sort -V | tail -2 \
+              | while read -r v; do echo "::notice title=Netty::$A $v"; done
+          done
+
+          # La version de netty que gRPC 1.80.0 déclare lui-même : c'est elle
+          # qui dit quelle ligne est sûre, et non le plus haut numéro existant.
+          curl -sS "https://repo1.maven.org/maven2/io/grpc/grpc-netty/1.80.0/grpc-netty-1.80.0.pom" \
+            | tr -d '\n' | grep -oE '<artifactId>netty-[^<]+</artifactId>[^!]{0,200}?<version>[^<]+</version>' \
+            | sed 's/<[^>]*>/ /g' | tr -s ' ' \
+            | while read -r line; do echo "::notice title=GrpcNetty::$line"; done
+
+          # Et la version de jackson qu'on vient d'épingler existe-t-elle ?
+          for V in 2.21.7; do
+            C=$(curl -sS -o /dev/null -w '%{http_code}' \
+              "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/$V/jackson-databind-$V.pom")
+            echo "::notice title=Jackson::jackson-databind $V -> HTTP $C"
+          done
+
+      - name: Resolve the digests we pin
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # Le digest de l'INDEX, pas celui d'une plateforme : c'est lui qui va
+          # dans un FROM et reste valable quelle que soit l'architecture.
+          #
+          # Comparer le résultat à ce que le Dockerfile épingle est un contrôle
+          # en soi : eclipse-temurin:25.0.4.1_1-jre-alpine avait BOUGÉ sous le
+          # même tag, ce qui est exactement la raison d'épingler par digest.
           for REF in \
             "golang:1.26.10-alpine" \
-            "golang:1.26.9-alpine" \
             "python:3.14.8-alpine" \
             "alpine:3.23.6" \
             "eclipse-temurin:25.0.4.1_1-jre-alpine" \
-            "mcr.microsoft.com/dotnet/runtime-deps:10.0.0-noble-chiseled"
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0.0-noble-chiseled" \
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0.1-noble-chiseled" \
+            "mcr.microsoft.com/dotnet/sdk:10.0.100-noble"
           do
             D=$(docker buildx imagetools inspect "$REF" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
-            if [ -n "$D" ]; then
-              echo "::notice title=Digest::$REF@$D"
-            else
-              echo "::notice title=Digest::$REF INTROUVABLE"
-            fi
-          done
-
-      - name: Which newer patch tags exist for the other bases?
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          for REPO in library/python library/alpine; do
-            NAME=$(echo "$REPO" | cut -d/ -f2)
-            curl -sS "https://hub.docker.com/v2/repositories/$REPO/tags?page_size=100" \
-              | jq -r '.results[].name' | sort -V | tail -8 \
-              | while read -r t; do echo "::notice title=Tag-$NAME::$t"; done
+            echo "::notice title=Digest::$REF@${D:-INTROUVABLE}"
           done
