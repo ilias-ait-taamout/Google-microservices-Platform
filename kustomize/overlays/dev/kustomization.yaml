@@ -48,6 +48,9 @@ images:
   newTag: "1.37"
 - name: redis
   newTag: 7.4-alpine
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
+  newName: iliasroo/cartservice
+  newTag: sha-844498f
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
   newName: iliasroo/checkoutservice
   newTag: sha-efdd53c
