@@ -50,13 +50,13 @@ images:
   newTag: 7.4-alpine
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
   newName: iliasroo/checkoutservice
-  newTag: sha-8292f0a
+  newTag: sha-a54e3d2
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
-  newTag: sha-8292f0a
+  newTag: sha-a54e3d2
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice
   newName: iliasroo/productcatalogservice
-  newTag: sha-8292f0a
+  newTag: sha-a54e3d2
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
   newName: iliasroo/shippingservice
-  newTag: sha-8292f0a
+  newTag: sha-a54e3d2
