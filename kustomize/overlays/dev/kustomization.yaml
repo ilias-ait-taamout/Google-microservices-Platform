@@ -50,31 +50,31 @@ images:
   newTag: 7.4-alpine
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
   newName: iliasroo/cartservice
-  newTag: sha-844498f
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
   newName: iliasroo/checkoutservice
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice
   newName: iliasroo/currencyservice
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice
   newName: iliasroo/emailservice
-  newTag: sha-5b29da6
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
   newName: iliasroo/loadgenerator
-  newTag: sha-5b29da6
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice
   newName: iliasroo/paymentservice
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice
   newName: iliasroo/productcatalogservice
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice
   newName: iliasroo/recommendationservice
-  newTag: sha-5b29da6
+  newTag: sha-46162ce
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
   newName: iliasroo/shippingservice
-  newTag: sha-efdd53c
+  newTag: sha-46162ce
