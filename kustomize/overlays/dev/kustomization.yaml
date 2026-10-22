@@ -62,13 +62,13 @@ images:
   newTag: sha-ca0c1d3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice
   newName: iliasroo/emailservice
-  newTag: sha-ca0c1d3
+  newTag: sha-3b7dbe3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
   newTag: sha-ca0c1d3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
   newName: iliasroo/loadgenerator
-  newTag: sha-ca0c1d3
+  newTag: sha-3b7dbe3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice
   newName: iliasroo/paymentservice
   newTag: sha-ca0c1d3
@@ -77,7 +77,7 @@ images:
   newTag: sha-ca0c1d3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice
   newName: iliasroo/recommendationservice
-  newTag: sha-ca0c1d3
+  newTag: sha-3b7dbe3
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
   newName: iliasroo/shippingservice
   newTag: sha-ca0c1d3
