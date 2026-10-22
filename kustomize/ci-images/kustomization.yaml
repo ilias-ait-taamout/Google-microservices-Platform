@@ -24,34 +24,34 @@ kind: Component
 images:
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/adservice
   newName: iliasroo/adservice
-  newTag: sha-a5d9478
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
   newName: iliasroo/cartservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
   newName: iliasroo/checkoutservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice
   newName: iliasroo/currencyservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice
   newName: iliasroo/emailservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
   newName: iliasroo/loadgenerator
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice
   newName: iliasroo/paymentservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice
   newName: iliasroo/productcatalogservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice
   newName: iliasroo/recommendationservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
   newName: iliasroo/shippingservice
-  newTag: sha-b66979a
+  newTag: sha-d19e70d
