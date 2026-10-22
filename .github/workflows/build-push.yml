@@ -296,14 +296,16 @@ jobs:
                  | select(.FixedVersion != null and .FixedVersion != "")]
                 | group_by(.PkgName)
                 | map({pkg: .[0].PkgName, installed: .[0].InstalledVersion,
-                       fix: (map(.FixedVersion) | map(split(", ")[0]) | sort | last),
+                       fix: (map(.FixedVersion) | unique | join(" ou ")),
                        n: length})
                 | sort_by(-.n)[]
                 | "| `\(.pkg)` | \(.installed) | \(.fix) | \(.n) |"
               ' trivy-report.json
               echo ""
-              echo "_The fix column is the highest version seen, sorted as text -"
-              echo "a hint for where to aim, not an authority._"
+              echo "_La colonne « fix » est la chaîne FixedVersion COMPLÈTE telle que"
+              echo "Trivy la donne. Elle peut contenir plusieurs versions : un correctif"
+              echo "par ligne de version maintenue. N'en retenir qu'une masquerait"
+              echo "l'existence d'un correctif dans la ligne que le projet utilise._"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -327,7 +329,7 @@ jobs:
                   pp: (.PkgPath // .PkgIdentifier.PURL // "-")}]
               | group_by([.pkg, .iv])
               | map({pkg: .[0].pkg, t: .[0].t, iv: .[0].iv, pp: .[0].pp,
-                     fv: (map(.fv) | map(split(", ")[0]) | sort | last),
+                     fv: (map(.fv) | unique | join(" ou ")),
                      n: length})
               | sort_by(-.n)[0:10][]
               | "::notice title=TrivyPkg::\(.pkg) \(.iv) -> \(.fv) x\(.n) [\(.t)] @\(.pp)"
