@@ -60,11 +60,56 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Historique complet : le filtre compare DEUX commits, et un clone
+          # superficiel n'en contient qu'un.
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # Le défaut corrigé ici, mesuré avant d'être corrigé.
+      #
+      # Sans `base`, dorny/paths-filter compare à la BRANCHE PAR DÉFAUT, pas au
+      # push précédent. Sur une branche de fonctionnalité, cela veut dire
+      # comparer à `main` : tout ce que la branche a accumulé depuis sa création
+      # compte comme « changé ». Le run 8292f0a l'a montré proprement — quatre
+      # Dockerfiles modifiés, onze services construits.
+      #
+      # Le détail qui confirme le mécanisme : `main` ne contient pas encore
+      # `.github/workflows/build-push.yml`, et chaque filtre liste ce fichier.
+      # Le diff contre `main` l'inclut donc, et TOUS les filtres correspondent.
+      # Mesuré : diff(main, 8292f0a) touche 10 répertoires de services, mais le
+      # fichier de workflow en plus en fait onze. diff(push précédent, 8292f0a)
+      # en touche quatre, ce qui est la bonne réponse.
+      #
+      # Repli volontaire : si la base n'est pas exploitable — déclenchement
+      # manuel, première poussée d'une branche (`before` à zéro), ou force-push
+      # qui a rendu l'ancien commit inatteignable — on laisse `base` vide et
+      # l'action reprend son comportement par défaut, qui reconstruit tout.
+      # Reconstruire de trop est un gaspillage ; reconstruire de moins publie
+      # une image périmée.
+      # -----------------------------------------------------------------------
+      - name: Choose the comparison base
+        id: base
+        run: |
+          set -uo pipefail
+          BEFORE="${{ github.event.before }}"
+          ZERO="0000000000000000000000000000000000000000"
+
+          if [ "${{ github.event_name }}" != "push" ] \
+             || [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "::notice title=Base::aucune base exploitable - tout est reconstruit"
+            echo "ref=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Base::comparaison avec ${BEFORE:0:7}"
+            echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Detect changed services
         id: filter
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
+          base: ${{ steps.base.outputs.ref }}
           # shoppingassistantservice is deliberately absent. It ships a
           # Dockerfile but is NOT in kustomize/base, so nothing deploys it and
           # building it would publish an image no cluster ever pulls.
@@ -104,9 +149,19 @@ jobs:
               - '.github/workflows/build-push.yml'
 
       - name: Report
+        env:
+          SERVICES: ${{ steps.filter.outputs.changes }}
         run: |
-          echo "Changed services: ${{ steps.filter.outputs.changes }}" \
-            >> "$GITHUB_STEP_SUMMARY"
+          set -uo pipefail
+          N=$(echo "$SERVICES" | jq 'length')
+          # En annotation ET dans le résumé : le résumé est plus lisible, mais
+          # seule l'annotation se lit par l'API publique sans identifiant.
+          echo "::notice title=Matrix::$N service(s) : $SERVICES"
+          {
+            echo "### Services à reconstruire : $N"
+            echo ""
+            echo "\`$SERVICES\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   build:
     needs: changes
