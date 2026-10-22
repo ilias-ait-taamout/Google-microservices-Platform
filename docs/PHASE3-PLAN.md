@@ -298,7 +298,7 @@ end, eleven services out of eleven published and signed.**
 - [x] **18.** One `Ingress` per overlay on `<env>.<node-ip>.sslip.io`.
       Traefik's Service is type `LoadBalancer`, which k3s's ServiceLB binds to
       host ports 80/443 on every node — hence task 17
-- [ ] **19.** Switch the overlays to `components/non-public-frontend`, which
+- [x] **19.** Switch the overlays to `components/non-public-frontend`, which
       deletes `frontend-external`, and drop the NodePort patches. Re-run
       kube-score and checkov: the `Service Type` finding should disappear
 
@@ -374,9 +374,45 @@ pushed first. The `Service Type` finding in the security baseline stays open
 for that reason, which is a trade-off rather than an oversight.
 
 ### Validation and close
+
+**Tasks 19 and 21 done (22 October 2026).**
+
+Task 19: the three overlays use `components/non-public-frontend`, which
+deletes frontend-external rather than converting it, so no NodePort Service
+remains anywhere. Resource counts are unchanged at 36 / 46 / 47 -- one Service
+removed, one Ingress added. The trade-off it creates has a tool:
+`infra/terraform/envs/dev/ingress-host.ps1` realigns the three hostnames on
+the cluster's current IP, dry-run by default, and prints the git commands
+afterwards because ArgoCD reads Git and not the local disk.
+
+Task 21, with the SAME tool versions as phase 2 -- kube-score 1.20.0, checkov
+3.3.29, which is what makes the two readings comparable at all:
+
+| | dev | staging | prod |
+|---|---|---|---|
+| kube-score CRITICAL | 62 -> 62 | 46 -> 46 | 45 -> 45 |
+| kube-score WARNING | 23 -> **22** | 23 -> **22** | 22 -> **21** |
+| checkov failed | 78 -> 78 | 55 -> 55 | 55 -> 55 |
+| checkov passed | 1024 -> 1027 | 956 -> 959 | 956 -> 959 |
+
+Every delta is accounted for with nothing left over. The only kube-score check
+whose count changes is `Service Type`, -1 per environment, which is precisely
+what task 19 targeted. checkov's failure list is byte-identical.
+
+And the passed counter misleads a second time, in the opposite direction to
+phase 2. There, deleting an orphan NetworkPolicy LOWERED it by 2 while quality
+rose. Here it RISES by 3 because the Ingress is one more resource that passes
+three checks. The counter tracks the number of resources evaluated, not their
+quality. Only the failures and their nature are worth reading.
+
+One finding task 19 created, named rather than left implicit: the Ingress
+declares no TLS, so all three environments are served over plain HTTP. Port
+443 is deliberately left closed until there is a certificate to present.
+cert-manager, phase 4.
+
 - [ ] **20.** Three environments through the Ingress, three hostnames, and the
       Phase 2 NetworkPolicy tests re-run to confirm nothing regressed
-- [ ] **21.** Security baseline v2 on the new renders, diffed against
+- [x] **21.** Security baseline v2 on the new renders, diffed against
       `docs/phase2/baseline/`
 - [ ] **22.** README in `.github/workflows/`, update `CLAUDE.md`, PRs
       feature -> develop -> release -> main with **merge commits**, tag
