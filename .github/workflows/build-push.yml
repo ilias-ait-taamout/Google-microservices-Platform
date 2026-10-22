@@ -181,6 +181,16 @@ jobs:
       # Six languages. One of them failing must not cancel the other ten, or a
       # single run tells you about one problem instead of all of them.
       fail-fast: false
+      # Onze jobs qui signent a la meme seconde, c'est onze demandes de
+      # certificat a Fulcio, onze entrees dans Rekor et onze ecritures de
+      # referent sur Docker Hub, simultanement. Observe le 22 octobre sur le
+      # premier run a onze services : 3 echecs sur `cosign sign`, 5 sur
+      # `cosign verify`, ZERO sur Trivy. Les runs precedents n'en construisaient
+      # que 1 a 4 et ne touchaient jamais cette limite.
+      #
+      # Quatre a la fois etale la charge sans allonger beaucoup le run : les
+      # couches sont deja en cache, c'est la signature qui prend le temps.
+      max-parallel: 4
       matrix:
         service: ${{ fromJSON(needs.changes.outputs.services) }}
 
@@ -369,8 +379,20 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
           SERVICE: ${{ matrix.service }}
         run: |
+          set -uo pipefail
           cosign version
-          cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"
+          # Fulcio et Rekor limitent le debit. Sous charge parallele, un refus
+          # n'est pas un probleme de signature mais un probleme de cadence.
+          for attempt in 1 2 3 4; do
+            if cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST"; then
+              echo "Signe a la tentative $attempt."
+              exit 0
+            fi
+            echo "Tentative $attempt refusee. Attente $((attempt * 15))s."
+            sleep $((attempt * 15))
+          done
+          echo "::error title=Cosign::Signature impossible apres 4 tentatives."
+          exit 1
 
       # Cheap, and it records WHERE the signature lives: cosign v3 attaches it
       # as an OCI 1.1 referrer, not as the legacy sha256-<digest>.sig tag. No
@@ -397,18 +419,26 @@ jobs:
         run: |
           set -uo pipefail
           REF="$IMAGE_OWNER/$SERVICE@$DIGEST"
-          for attempt in 1 2 3 4 5 6; do
+          # Budget d'attente : 10+15+20+25+30x6 = 250 s. L'ancien etait de 60 s,
+          # calibre en observant UN service a la fois. Avec onze signatures
+          # simultanees, l'index de referents de Docker Hub met bien plus
+          # longtemps a rattraper. On attend l'index plus longtemps, on ne
+          # baisse pas l'exigence : la verification reste fatale, parce qu'une
+          # signature invérifiable rend la signature decorative.
+          attempt=0
+          for D in 10 15 20 25 30 30 30 30 30 30; do
+            attempt=$((attempt + 1))
             if cosign verify \
                  --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
                  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
                  "$REF"; then
-              echo "Verified on attempt $attempt."
+              echo "Verifie a la tentative $attempt."
               exit 0
             fi
-            echo "Attempt $attempt found nothing yet; the referrers index lags. Waiting 10s."
-            sleep 10
+            echo "Tentative $attempt : l'index n'a pas rattrape. Attente ${D}s."
+            sleep "$D"
           done
-          echo "::error::Signature never became verifiable after 6 attempts."
+          echo "::error title=Cosign::Signature non verifiable apres $attempt tentatives (250 s)."
           exit 1
 
       - name: Summary
