@@ -1,0 +1,752 @@
+# Build, scan, push and sign every deployed service image.
+#
+# Phase 3 tasks 5-9. Decision D was "one service end to end first, then
+# generalise" - the frontend proved the chain, this generalises it to the 11
+# services that kustomize/base actually deploys.
+#
+# Image convention is ADR-002: <user>/<service>:sha-<git-sha-7>, immutable, and
+# `latest` is never produced at all rather than produced and then forbidden.
+#
+# -----------------------------------------------------------------------------
+# WHY EVERY ACTION IS PINNED TO A COMMIT SHA
+# -----------------------------------------------------------------------------
+# A tag is a movable pointer. On 19 March 2026 an attacker with stolen
+# credentials force-pushed 76 of the 77 version tags of aquasecurity/trivy-action
+# to credential-stealing malware that dumped runner memory and harvested secrets
+# (advisory GHSA-69fq-xp46-6x23). Tags 0.0.1 through 0.34.2 were affected;
+# 0.35.0 was not. Anyone pinned to `@v0.30.0` got the malware without changing a
+# single line of their workflow.
+#
+# A commit SHA cannot be moved. Aqua's own remediation advice is to pin actions
+# by full SHA rather than by tag, so that is what this file does - including for
+# the scanner whose job is to protect us from exactly this.
+#
+# The version in the trailing comment is for humans and for Dependabot, which
+# reads it to know what to bump. The SHA is what actually runs.
+name: build-push
+
+on:
+  push:
+    # La branche de fonctionnalite a ete retiree a la tache 22 : elle n'etait la
+    # que pour deboguer le pipeline sans fusionner d'abord un workflow casse
+    # dans develop, et parce que workflow_dispatch n'offre son bouton qu'une
+    # fois le fichier present sur la branche par defaut. Les deux raisons
+    # disparaissent avec la fusion.
+    branches: [develop]
+    paths:
+      - 'src/**'
+      - '.github/workflows/build-push.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE_OWNER: ${{ vars.DOCKERHUB_USERNAME }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Which services actually changed? Rebuilding all 11 on every commit would
+  # cost ~20 minutes and republish ten images whose bytes did not change, each
+  # under a new tag - which makes the tag stop meaning anything.
+  #
+  # Each filter also lists this workflow file: editing the pipeline must rebuild
+  # everything, because the pipeline is part of how the artefact is produced.
+  # ---------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      services: ${{ steps.filter.outputs.changes }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Historique complet : le filtre compare DEUX commits, et un clone
+          # superficiel n'en contient qu'un.
+          fetch-depth: 0
+
+      # -----------------------------------------------------------------------
+      # Le défaut corrigé ici, mesuré avant d'être corrigé.
+      #
+      # Sans `base`, dorny/paths-filter compare à la BRANCHE PAR DÉFAUT, pas au
+      # push précédent. Sur une branche de fonctionnalité, cela veut dire
+      # comparer à `main` : tout ce que la branche a accumulé depuis sa création
+      # compte comme « changé ». Le run 8292f0a l'a montré proprement — quatre
+      # Dockerfiles modifiés, onze services construits.
+      #
+      # Le détail qui confirme le mécanisme : `main` ne contient pas encore
+      # `.github/workflows/build-push.yml`, et chaque filtre liste ce fichier.
+      # Le diff contre `main` l'inclut donc, et TOUS les filtres correspondent.
+      # Mesuré : diff(main, 8292f0a) touche 10 répertoires de services, mais le
+      # fichier de workflow en plus en fait onze. diff(push précédent, 8292f0a)
+      # en touche quatre, ce qui est la bonne réponse.
+      #
+      # Repli volontaire : si la base n'est pas exploitable — déclenchement
+      # manuel, première poussée d'une branche (`before` à zéro), ou force-push
+      # qui a rendu l'ancien commit inatteignable — on laisse `base` vide et
+      # l'action reprend son comportement par défaut, qui reconstruit tout.
+      # Reconstruire de trop est un gaspillage ; reconstruire de moins publie
+      # une image périmée.
+      # -----------------------------------------------------------------------
+      - name: Choose the comparison base
+        id: base
+        run: |
+          set -uo pipefail
+          BEFORE="${{ github.event.before }}"
+          ZERO="0000000000000000000000000000000000000000"
+
+          if [ "${{ github.event_name }}" != "push" ] \
+             || [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "::notice title=Base::aucune base exploitable - tout est reconstruit"
+            echo "ref=" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Base::comparaison avec ${BEFORE:0:7}"
+            echo "ref=$BEFORE" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect changed services
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          base: ${{ steps.base.outputs.ref }}
+          # shoppingassistantservice is deliberately absent. It ships a
+          # Dockerfile but is NOT in kustomize/base, so nothing deploys it and
+          # building it would publish an image no cluster ever pulls.
+          filters: |
+            adservice:
+              - 'src/adservice/**'
+              - '.github/workflows/build-push.yml'
+            cartservice:
+              - 'src/cartservice/**'
+              - '.github/workflows/build-push.yml'
+            checkoutservice:
+              - 'src/checkoutservice/**'
+              - '.github/workflows/build-push.yml'
+            currencyservice:
+              - 'src/currencyservice/**'
+              - '.github/workflows/build-push.yml'
+            emailservice:
+              - 'src/emailservice/**'
+              - '.github/workflows/build-push.yml'
+            frontend:
+              - 'src/frontend/**'
+              - '.github/workflows/build-push.yml'
+            loadgenerator:
+              - 'src/loadgenerator/**'
+              - '.github/workflows/build-push.yml'
+            paymentservice:
+              - 'src/paymentservice/**'
+              - '.github/workflows/build-push.yml'
+            productcatalogservice:
+              - 'src/productcatalogservice/**'
+              - '.github/workflows/build-push.yml'
+            recommendationservice:
+              - 'src/recommendationservice/**'
+              - '.github/workflows/build-push.yml'
+            shippingservice:
+              - 'src/shippingservice/**'
+              - '.github/workflows/build-push.yml'
+
+      - name: Report
+        env:
+          SERVICES: ${{ steps.filter.outputs.changes }}
+        run: |
+          set -uo pipefail
+          N=$(echo "$SERVICES" | jq 'length')
+          # En annotation ET dans le résumé : le résumé est plus lisible, mais
+          # seule l'annotation se lit par l'API publique sans identifiant.
+          echo "::notice title=Matrix::$N service(s) : $SERVICES"
+          {
+            echo "### Services à reconstruire : $N"
+            echo ""
+            echo "\`$SERVICES\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.services != '[]'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required for Cosign KEYLESS signing. GitHub mints a short-lived OIDC
+      # token for this job; Fulcio exchanges it for a certificate valid about
+      # ten minutes, and the signature plus certificate go to the public Rekor
+      # transparency log. There is no private key to store, rotate or leak - the
+      # identity proved is "this workflow, in this repository", not "whoever
+      # holds the key".
+      id-token: write
+
+    strategy:
+      # Six languages. One of them failing must not cancel the other ten, or a
+      # single run tells you about one problem instead of all of them.
+      fail-fast: false
+      # Onze jobs qui signent a la meme seconde, c'est onze demandes de
+      # certificat a Fulcio, onze entrees dans Rekor et onze ecritures de
+      # referent sur Docker Hub, simultanement. Observe le 22 octobre sur le
+      # premier run a onze services : 3 echecs sur `cosign sign`, 5 sur
+      # `cosign verify`, ZERO sur Trivy. Les runs precedents n'en construisaient
+      # que 1 a 4 et ne touchaient jamais cette limite.
+      #
+      # Quatre a la fois etale la charge sans allonger beaucoup le run : les
+      # couches sont deja en cache, c'est la signature qui prend le temps.
+      # UN SEUL a la fois. Deux signatures simultanees suffisent a declencher
+      # les refus observes le 22 octobre ; en sequentiel, chaque service
+      # dialogue seul avec Fulcio, Rekor et Docker Hub. Le cout est du temps
+      # d'horloge, pas de la fiabilite : les couches sont en cache, c'est la
+      # signature qui prend le temps.
+      max-parallel: 1
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
+
+    name: ${{ matrix.service }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Compute tag and build context
+        id: meta
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+          # ADR-002: 7-char git SHA, immutable. GITHUB_SHA is the commit that
+          # triggered the run, so a running pod can always be traced back to the
+          # exact source - which is what makes the task 15 rollback meaningful.
+          TAG="sha-${GITHUB_SHA::7}"
+
+          # Ten services keep their Dockerfile at src/<service>/. cartservice is
+          # a .NET project and nests it one level deeper. No Dockerfile here
+          # COPYs from a parent directory, so the service directory is always a
+          # sufficient context - checked, not assumed.
+          case "$SERVICE" in
+            cartservice) CONTEXT="src/cartservice/src" ;;
+            *)           CONTEXT="src/$SERVICE" ;;
+          esac
+          test -f "$CONTEXT/Dockerfile" || { echo "::error::no Dockerfile at $CONTEXT"; exit 1; }
+
+          {
+            echo "tag=$TAG"
+            echo "context=$CONTEXT"
+            echo "image=$IMAGE_OWNER/$SERVICE:$TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Build LOCALLY first. The image is not pushed until Trivy has passed -
+      # publishing and then scanning would mean a vulnerable image is already
+      # pullable by the time anyone finds out.
+      - name: Build (local, not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ steps.meta.outputs.context }}
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.image }}
+          # Without this, Buildx publishes a manifest LIST with a provenance
+          # attestation even for one platform, which Trivy and Cosign then have
+          # to be told how to resolve. Phase 4 revisits it, where attestations
+          # are the point rather than an accident.
+          provenance: false
+          # Scoped per service, or the eleven jobs would evict each other's
+          # layers from a single shared cache key.
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # ONE scan, in JSON, and the gate is computed from it with jq.
+      #
+      # It used to be two trivy invocations - one for the report, one for the
+      # gate - because a failing gate stops the job before a report is written.
+      # With eleven services in parallel that was 22 vulnerability-database
+      # downloads per run, and the gate's rule lived inside an action's inputs
+      # where it could not be read. Scanning once and deciding in jq halves the
+      # downloads and puts the rule in plain sight.
+      - name: Trivy - scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.meta.outputs.image }}
+          format: json
+          output: trivy-report.json
+          exit-code: '0'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          scanners: vuln
+
+      - name: Trivy - gate and summary
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -euo pipefail
+
+          # The gate: HIGH or CRITICAL, and a fix exists upstream. A finding
+          # with no FixedVersion cannot be acted on, and blocking on it would
+          # only teach people to disable the scan.
+          BLOCKING=$(jq '[.Results[]? | (.Vulnerabilities // [])[]
+            | select(.Severity=="HIGH" or .Severity=="CRITICAL")
+            | select(.FixedVersion != null and .FixedVersion != "")] | length' trivy-report.json)
+          TOTAL=$(jq '[.Results[]? | (.Vulnerabilities // [])[]] | length' trivy-report.json)
+
+          {
+            echo "### \`$SERVICE\` - $BLOCKING blocking, $TOTAL total"
+            echo ""
+            echo "| target | findings |"
+            echo "|---|---|"
+            jq -r '.Results[]? | "| \(.Target) | \((.Vulnerabilities // []) | length) |"' trivy-report.json
+            if [ "$BLOCKING" -gt 0 ]; then
+              echo ""
+              echo "**Blocking (HIGH/CRITICAL with a fix available):**"
+              echo ""
+              echo "| package | installed | fix | count |"
+              echo "|---|---|---|---|"
+              jq -r '
+                [.Results[]? | (.Vulnerabilities // [])[]
+                 | select(.Severity=="HIGH" or .Severity=="CRITICAL")
+                 | select(.FixedVersion != null and .FixedVersion != "")]
+                | group_by(.PkgName)
+                | map({pkg: .[0].PkgName, installed: .[0].InstalledVersion,
+                       fix: (map(.FixedVersion) | unique | join(" ou ")),
+                       n: length})
+                | sort_by(-.n)[]
+                | "| `\(.pkg)` | \(.installed) | \(.fix) | \(.n) |"
+              ' trivy-report.json
+              echo ""
+              echo "_La colonne « fix » est la chaîne FixedVersion COMPLÈTE telle que"
+              echo "Trivy la donne. Elle peut contenir plusieurs versions : un correctif"
+              echo "par ligne de version maintenue. N'en retenir qu'une masquerait"
+              echo "l'existence d'un correctif dans la ligne que le projet utilise._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$BLOCKING" -gt 0 ]; then
+            echo "::error title=Trivy::$SERVICE - $BLOCKING fixable HIGH/CRITICAL findings"
+
+            # The breakdown, as annotations rather than only in the step
+            # summary. Annotations are readable through the public GitHub API
+            # for a public repository; step summaries, job logs and artifacts
+            # all need credentials. This is what lets the findings be analysed
+            # without anyone opening ten job pages by hand.
+            #
+            # Top 10 packages by count: GitHub keeps roughly that many
+            # annotations per level per step, and the long tail is noise next
+            # to the base image or framework that dominates.
+            jq -r '
+              [.Results[]? | .Target as $t | (.Vulnerabilities // [])[]
+               | select(.Severity=="HIGH" or .Severity=="CRITICAL")
+               | select(.FixedVersion != null and .FixedVersion != "")
+               | {t: $t, pkg: .PkgName, iv: .InstalledVersion, fv: .FixedVersion,
+                  pp: (.PkgPath // .PkgIdentifier.PURL // "-")}]
+              | group_by([.pkg, .iv])
+              | map({pkg: .[0].pkg, t: .[0].t, iv: .[0].iv, pp: .[0].pp,
+                     fv: (map(.fv) | unique | join(" ou ")),
+                     n: length})
+              | sort_by(-.n)[0:10][]
+              | "::notice title=TrivyPkg::\(.pkg) \(.iv) -> \(.fv) x\(.n) [\(.t)] @\(.pp)"
+            ' trivy-report.json
+
+            exit 1
+          fi
+          echo "$SERVICE: clean."
+
+      - name: Archive the Trivy report
+        if: always()  # the report matters most when the gate failed
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-${{ matrix.service }}-${{ steps.meta.outputs.tag }}
+          path: trivy-report.json
+          retention-days: 30
+
+      # Only now. Everything is already in the layer cache, so this is seconds.
+      - name: Push the image
+        id: push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ steps.meta.outputs.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      # cosign ne reprend PAS les identifiants de docker/login-action : il
+      # interroge Docker Hub de facon anonyme et tombe donc sous la limite
+      # anonyme de 100 requetes / 6 h, PARTAGEE par adresse IP avec tous les
+      # autres runners GitHub. C'est l'erreur observee le 22 octobre :
+      #   TOOMANYREQUESTS: You have reached your unauthenticated pull rate limit
+      # sur un GET de manifeste, pendant `cosign sign`.
+      #
+      # Authentifie, le quota devient celui du compte (200 / 6 h) et n'est plus
+      # partage avec des inconnus.
+      - name: Log cosign in to the registry
+        env:
+          U: ${{ vars.DOCKERHUB_USERNAME }}
+          P: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: cosign login index.docker.io -u "$U" -p "$P"
+
+      # Sign the DIGEST, never the tag. A tag is a movable pointer - the same
+      # reason every action here is pinned by SHA. Signing a tag would prove
+      # nothing about the bytes pulled later.
+      - name: Sign the image (keyless)
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -uo pipefail
+          cosign version
+          # Fulcio et Rekor limitent le debit. Sous charge parallele, un refus
+          # n'est pas un probleme de signature mais un probleme de cadence.
+          LOG=/tmp/cosign-sign.log
+          for attempt in 1 2 3 4; do
+            if cosign sign --yes "$IMAGE_OWNER/$SERVICE@$DIGEST" 2>&1 | tee "$LOG"; then
+              echo "Signe a la tentative $attempt."
+              exit 0
+            fi
+            echo "Tentative $attempt refusee. Attente $((attempt * 15))s."
+            sleep $((attempt * 15))
+          done
+          # La raison de l'echec doit sortir du job : les journaux exigent des
+          # identifiants, les annotations non. Sans cela on diagnostique a
+          # l'aveugle, ce qui a deja coute une hypothese fausse aujourd'hui.
+          RAISON=$(tr '\n' ' | ' < "$LOG" | tail -c 400)
+          echo "::error title=Cosign-sign::$SERVICE - echec apres 4 tentatives : $RAISON"
+          exit 1
+
+      # Cheap, and it records WHERE the signature lives: cosign v3 attaches it
+      # as an OCI 1.1 referrer, not as the legacy sha256-<digest>.sig tag. No
+      # .sig tag ever appears on Docker Hub, and hunting for one is a dead end.
+      # Chaque invocation coute un pull, compte dans le quota. On ne la fait
+      # donc que lorsqu'elle sert a quelque chose : un echec a diagnostiquer.
+      - name: Show what is attached to the digest
+        if: failure()
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
+        run: cosign tree "$IMAGE_OWNER/$SERVICE@$DIGEST" || true
+
+      # Fatal. An unverifiable signature makes signing theatre.
+      #
+      # The retry is not papering over a failure. Docker Hub's referrers index
+      # is eventually consistent: one run verified seconds after signing and got
+      # "no signatures found", while the next found TWO signatures on the same
+      # digest - the earlier one had simply become queryable meanwhile. A fresh
+      # digest hits that window again, so we wait for the index rather than
+      # pretend it is not there.
+      - name: Verify the signature
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -uo pipefail
+          REF="$IMAGE_OWNER/$SERVICE@$DIGEST"
+          # Budget d'attente : 10+15+20+25+30x6 = 250 s. L'ancien etait de 60 s,
+          # calibre en observant UN service a la fois. Avec onze signatures
+          # simultanees, l'index de referents de Docker Hub met bien plus
+          # longtemps a rattraper. On attend l'index plus longtemps, on ne
+          # baisse pas l'exigence : la verification reste fatale, parce qu'une
+          # signature invérifiable rend la signature decorative.
+          attempt=0
+          # ATTENTION : chaque tentative est un PULL, compte dans le quota du
+          # registre. Dix tentatives x onze services, c'etait plus de cent
+          # requetes pour la seule verification -- le garde-fou devenait la
+          # cause de la panne. Six tentatives bien reparties couvrent 150 s.
+          for D in 10 20 30 30 30 30; do
+            attempt=$((attempt + 1))
+            if cosign verify \
+                 --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+                 --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                 "$REF"; then
+              echo "Verifie a la tentative $attempt."
+              exit 0
+            fi
+            echo "Tentative $attempt : l'index n'a pas rattrape. Attente ${D}s."
+            sleep "$D"
+          done
+          RAISON=$(cosign verify \
+                     --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+                     --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                     "$REF" 2>&1 | tr '\n' ' | ' | tail -c 400)
+          echo "::error title=Cosign-verify::$SERVICE - non verifiable apres $attempt tentatives : $RAISON"
+          exit 1
+
+      - name: Summary
+        # Only reached when every step above passed, verification included -
+        # which is what makes these lines true rather than decorative.
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### \`${{ steps.meta.outputs.image }}\`"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| context | \`${{ steps.meta.outputs.context }}\` |"
+            echo "| digest | \`$DIGEST\` |"
+            echo "| Trivy | HIGH,CRITICAL, unfixed ignored - no findings |"
+            echo "| Signature | keyless, verified against this repository |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Marqueur : ce service a bien été publié ET vérifié. Le job `bump` les
+      # ramasse pour savoir quels tags il a le droit de bouger.
+      #
+      # Pas de `if: always()` : un service dont le verrou Trivy a bloqué ne doit
+      # PAS laisser de marqueur, parce que son image n'existe pas. L'overlay
+      # garde alors l'image v0.10.5 de Google — c'est exactement ce qui rend le
+      # déploiement service par service possible (décision D).
+      - name: Record that this service was published
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          mkdir -p built
+          echo "$DIGEST" > "built/${{ matrix.service }}"
+
+      - name: Upload the build marker
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: built-${{ matrix.service }}
+          path: built/
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Tâche 10 — ADR-004 : écrire le nouveau tag dans l'overlay dev et le pousser.
+  #
+  # UN SEUL job, pas onze. Onze jobs qui poussent chacun un commit sur la même
+  # branche entreraient en collision, et onze commits voudraient dire onze
+  # synchronisations ArgoCD pour un seul changement de code. Chaque job de build
+  # dépose un marqueur ; celui-ci les ramasse et produit UN commit.
+  #
+  # ADR-004 : la CI pousse directement sur la branche d'environnement avec
+  # [skip ci]. L'exception à « jamais de push direct » est écrite dans l'ADR :
+  # la règle existe pour empêcher un HUMAIN de contourner une revue, et le
+  # changement de tag est un fait dérivé, pas une nouvelle décision.
+  # ---------------------------------------------------------------------------
+  bump:
+    needs: [changes, build]
+    # `!cancelled()` et non `success()` : si 7 services sur 11 échouent au verrou
+    # Trivy, le job `build` est en échec, mais les 4 qui sont passés doivent
+    # quand même être déployés.
+    if: >-
+      ${{ !cancelled()
+          && needs.changes.outputs.services != '[]'
+          && (github.ref_name == 'develop' || github.ref_name == 'feature/phase3-cicd') }}
+    runs-on: ubuntu-24.04
+
+    permissions:
+      # Le SEUL endroit du dépôt qui écrit dans Git, et c'est au niveau du job :
+      # les onze jobs de build restent en `contents: read`.
+      contents: write
+
+    concurrency:
+      # Deux runs qui se chevauchent pousseraient sur la même branche. On
+      # sérialise au lieu d'annuler : chaque bump doit aboutir.
+      group: bump-${{ github.ref }}
+      cancel-in-progress: false
+
+    env:
+      OVERLAY: kustomize/overlays/dev
+      UPSTREAM: us-central1-docker.pkg.dev/google-samples/microservices-demo
+      KUSTOMIZE_VERSION: v5.8.1
+      # Même principe que l'épinglage des actions par SHA : un fichier de
+      # release est lui aussi un pointeur mutable. Somme relevée sur
+      # checksums.txt de la release, pas recopiée de mémoire.
+      KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+
+    steps:
+      - name: Checkout the branch itself, not the detached commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Sur un événement `push`, checkout laisse le dépôt en HEAD détaché :
+          # on ne peut pas pousser depuis là, il faut la branche.
+          ref: ${{ github.ref_name }}
+          persist-credentials: true
+
+      - name: Collect the services that were actually published
+        id: markers
+        continue-on-error: true   # aucun artefact = aucun service publié, ce n'est pas une erreur
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: built-*
+          merge-multiple: true
+          path: built
+
+      - name: Install kustomize, verified by checksum
+        run: |
+          set -euo pipefail
+          cd /tmp
+          TARBALL="kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz"
+          curl -sSLO "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/${TARBALL}"
+          echo "${KUSTOMIZE_SHA256}  ${TARBALL}" | sha256sum --check --strict
+          tar -xzf "$TARBALL"
+          sudo install -m 0755 kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Rewrite the dev overlay image tags
+        id: edit
+        run: |
+          set -euo pipefail
+          TAG="sha-${GITHUB_SHA::7}"
+
+          if [ ! -d built ] || [ -z "$(ls -A built 2>/dev/null)" ]; then
+            echo "Aucun service publié par ce run — rien à bumper."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          SERVICES=$(ls built | sort | tr '\n' ' ')
+          echo "Services publiés : $SERVICES"
+
+          # `kustomize edit set image` plutôt qu'un sed : l'outil comprend la
+          # structure du fichier et ne peut pas produire un YAML invalide.
+          # Il resérialise tout le fichier (clés réordonnées, champs laissés à
+          # leur défaut omis) mais conserve les commentaires, et le rendu est
+          # identique — vérifié par un `kustomize build` avant/après qui ne
+          # diffère que sur les lignes `image:`.
+          cd "$OVERLAY"
+          for SERVICE in $SERVICES; do
+            kustomize edit set image "${UPSTREAM}/${SERVICE}=${IMAGE_OWNER}/${SERVICE}:${TAG}"
+          done
+          cd - > /dev/null
+
+          if git diff --quiet -- "$OVERLAY/kustomization.yaml"; then
+            echo "Les tags étaient déjà à jour."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "services=$SERVICES"
+            echo "count=$(echo $SERVICES | wc -w)"
+            echo "changed=true"
+          } >> "$GITHUB_OUTPUT"
+
+          git --no-pager diff -- "$OVERLAY/kustomization.yaml"
+
+      - name: Prove the overlay still renders
+        if: steps.edit.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Pousser un overlay qui ne rend pas, c'est casser ArgoCD pour tout le
+          # monde. Le contrôle coûte une seconde.
+          kustomize build "$OVERLAY" > /tmp/render.yaml
+          echo "Rendu : $(grep -c '^---' /tmp/render.yaml) documents, $(wc -l < /tmp/render.yaml) lignes."
+          grep -E '^\s+image: ' /tmp/render.yaml | sort -u
+
+      - name: Commit and push
+        if: steps.edit.outputs.changed == 'true'
+        env:
+          TAG: ${{ steps.edit.outputs.tag }}
+          SERVICES: ${{ steps.edit.outputs.services }}
+          COUNT: ${{ steps.edit.outputs.count }}
+        run: |
+          set -euo pipefail
+
+          # Identité de robot, pas celle d'Ilias : `git log --author` doit
+          # rester exploitable (ADR-004). 41898282 est l'identifiant de
+          # github-actions[bot], relevé sur l'API, pas recopié de mémoire.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add "$OVERLAY/kustomization.yaml"
+
+          # [skip ci] est EXIGÉ par ADR-004. Sans lui : le bump déclenche un
+          # build, qui produit un bump, qui déclenche un build. Un push fait
+          # avec le GITHUB_TOKEN par défaut ne déclenche déjà aucun workflow,
+          # mais s'appuyer sur ce comportement implicite serait fragile — un
+          # jeton d'application GitHub, lui, les déclencherait.
+          git commit \
+            -m "ci(dev): image $TAG sur $COUNT service(s) [skip ci]" \
+            -m "Services: $SERVICES" \
+            -m "Produit par le run $GITHUB_RUN_ID."
+
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Poussé à la tentative $attempt."
+              exit 0
+            fi
+            echo "Push refusé — la branche a bougé. Rebase puis nouvelle tentative."
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            sleep 3
+          done
+          echo "::error title=Bump::Le bump n'a pas pu être poussé après 3 tentatives."
+          exit 1
+
+      # -----------------------------------------------------------------------
+      # Rapport d'intégration : qui est passé, qui a bloqué.
+      #
+      # Le job `bump` est le seul qui voie TOUS les services à la fois — la
+      # matrice, elle, ne sait rien de ses voisins. Il est donc le seul endroit
+      # d'où l'on puisse répondre à « est-ce que l'ensemble passe ? », et il le
+      # dit en annotations pour que la réponse se lise par l'API publique sans
+      # identifiant.
+      # -----------------------------------------------------------------------
+      - name: Integration report
+        if: always()
+        env:
+          ATTENDUS: ${{ needs.changes.outputs.services }}
+        run: |
+          set -uo pipefail
+          PUBLIES=$(ls built 2>/dev/null | sort | tr '\n' ' ')
+          N_ATT=$(echo "$ATTENDUS" | jq 'length')
+          N_PUB=$(echo "$PUBLIES" | wc -w)
+
+          BLOQUES=""
+          for S in $(echo "$ATTENDUS" | jq -r '.[]'); do
+            [ -f "built/$S" ] || BLOQUES="$BLOQUES $S"
+          done
+
+          echo "::notice title=Integration::$N_PUB/$N_ATT publies"
+          if [ -n "$BLOQUES" ]; then
+            echo "::notice title=Bloques::$BLOQUES"
+          else
+            echo "::notice title=Bloques::aucun - tous les services construits sont passes"
+          fi
+
+          {
+            echo "## Rapport d'intégration"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| services construits | $N_ATT |"
+            echo "| publiés et signés | **$N_PUB** |"
+            echo "| bloqués par le verrou | ${BLOQUES:-aucun} |"
+            echo ""
+            echo "### Inventaire des artefacts produits"
+            echo ""
+            echo "| service | image | digest |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # L'inventaire : quel service, quelle image, quel digest. C'est ce qui
+          # permet de relier plus tard un pod en execution a l'octet pres au run
+          # qui l'a produit -- et c'est ce que la tache 15 (rollback) utilisera.
+          for S in $(ls built 2>/dev/null | sort); do
+            D=$(cat "built/$S")
+            echo "::notice title=Artefact::$S $IMAGE_OWNER/$S@$D"
+            echo "| \`$S\` | \`$IMAGE_OWNER/$S\` | \`$D\` |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Bump de l'overlay \`dev\`"
+            echo ""
+            if [ "${{ steps.edit.outputs.changed }}" = "true" ]; then
+              echo "| | |"
+              echo "|---|---|"
+              echo "| tag | \`${{ steps.edit.outputs.tag }}\` |"
+              echo "| services | ${{ steps.edit.outputs.services }} |"
+              echo "| branche | \`${GITHUB_REF_NAME}\` |"
+            else
+              echo "Aucun changement : soit aucun service n'a été publié par ce run,"
+              echo "soit les tags étaient déjà à jour."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -7,6 +7,7 @@ kind: Kustomization
 resources:
   - ../../base
   - namespace.yaml
+  - ingress.yaml
 
 # A Component is a kustomization of `kind: Component`. Unlike a resource it can
 # both ADD resources and PATCH what is already there, and it is applied after
@@ -28,6 +29,7 @@ resources:
 components:
   - ../../components/without-loadgenerator
   - ../../components/network-policies
+  - ../../components/non-public-frontend
 
 namespace: staging
 
@@ -43,7 +45,6 @@ labels:
     includeTemplates: true
 
 patches:
-  - path: frontend-external-nodeport.yaml
   # Removes the two loadgenerator orphans without-loadgenerator leaves
   # behind. Added after task 14: kube-score flags the dangling
   # NetworkPolicy. See docs/phase2/baseline/README.md.

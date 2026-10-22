@@ -1,0 +1,31 @@
+# Le Service argocd-server est un ClusterIP par défaut : l'interface n'est donc
+# joignable que depuis l'intérieur du cluster.
+#
+# NodePort plutôt que LoadBalancer ou Ingress, pour la raison déjà retenue en
+# phase 2 : le groupe de sécurité Terraform ouvre 30000-32767 à `admin_cidr` et
+# n'ouvre pas le port 80. 30090 ne collisionne avec aucun des trois NodePorts
+# des environnements (30080 / 30081 / 30082) — un nodePort est alloué à
+# l'échelle du CLUSTER, pas par namespace.
+#
+# Le serveur garde son TLS : le navigateur avertira sur un certificat
+# auto-signé. C'est plus honnête que de passer le serveur en `--insecure` pour
+# faire disparaître l'avertissement.
+#
+# PIÈGE RENCONTRÉ, à ne pas réintroduire : `protocol: TCP` est OBLIGATOIRE
+# ci-dessous. La clé de fusion de `Service.spec.ports` est le couple
+# (port, protocol). Sans `protocol`, l'entrée ne correspond à aucune entrée
+# existante et kustomize la SUPPRIME SILENCIEUSEMENT au lieu de l'ajouter :
+# `type: NodePort` était appliqué, `nodePort: 30090` disparaissait, et le rendu
+# ne signalait rien. Reproduit en isolation avant d'être corrigé.
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server
+spec:
+  type: NodePort
+  ports:
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 8080
+      nodePort: 30090
