@@ -1,30 +1,94 @@
 # Overlay dev — Online Boutique in namespace `dev` on the shared k3s cluster.
 # Google's base/ is consumed as-is (decision C); every difference is below.
+#
+# FORMAT — read this before reformatting the file by hand.
+# This file is rewritten by `kustomize edit set image` in the `bump` job of
+# .github/workflows/build-push.yml (ADR-004). kustomize re-serialises the whole
+# file: it KEEPS comments, but it reorders keys and omits any field left at its
+# default value. Two consequences:
+#   1. list indentation is kustomize's own (no two-space indent under a key);
+#   2. `includeSelectors: false` no longer appears below — false IS the default.
+# Verified rather than assumed: `kustomize build` before and after the edit
+# differs only on the `image:` lines, nothing else.
+#
+# The point `includeSelectors: false` used to make is too important to lose, so
+# it is recorded here instead: the overlay's labels must NEVER enter selectors.
+# A Deployment's spec.selector is immutable after creation, and every
+# NetworkPolicy podSelector matches on `app` alone — had `environment` been
+# injected into them, no policy would match anything.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base
-  - namespace.yaml
+- ../../base
+- namespace.yaml
+- ingress.yaml
+
+# Tache 19 : l'acces passe desormais par l'Ingress, plus par un NodePort.
+#
+# `non-public-frontend` ne convertit PAS frontend-external en ClusterIP : il le
+# SUPPRIME ($patch: delete), ne laissant que le Service interne `frontend` que
+# l'Ingress cible. C'est exactement pour cela qu'il etait inutilisable en
+# phase 2, ou le NodePort etait le seul chemin d'acces.
+#
+# Consequence mesurable : le constat `Service Type` de la base de reference
+# securite doit disparaitre, puisqu'il ne reste plus aucun Service NodePort.
+components:
+  - ../../components/non-public-frontend
 
 namespace: dev
 
 # `labels` rather than the deprecated `commonLabels`: selectors are immutable
 # on Deployments, so they must never carry labels we might change later.
 labels:
-  - pairs:
-      environment: dev
-      app.kubernetes.io/part-of: online-boutique
-    includeSelectors: false
-    includeTemplates: true
+- includeTemplates: true
+  pairs:
+    app.kubernetes.io/part-of: online-boutique
+    environment: dev
 
-patches:
-  - path: frontend-external-nodeport.yaml
 
-# Pin the two third-party images the base leaves floating. Google's 11
-# microservice images stay at v0.10.5.
+# Pin the two third-party images the base leaves floating.
+#
+# Everything BELOW the two entries here is written by CI. kustomize keeps the
+# list sorted by `name`, and the upstream registry sorts after `busybox` and
+# `redis`, so the machine-owned entries always land at the end. A service CI
+# has not published yet simply has no entry and keeps Google's v0.10.5 image —
+# which is what makes a service-by-service rollout possible (decision D).
 images:
-  - name: redis
-    newTag: 7.4-alpine
-  - name: busybox
-    newTag: "1.37"
+- name: busybox
+  newTag: "1.37"
+- name: redis
+  newTag: 7.4-alpine
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/adservice
+  newName: iliasroo/adservice
+  newTag: sha-a5d9478
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/cartservice
+  newName: iliasroo/cartservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/checkoutservice
+  newName: iliasroo/checkoutservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/currencyservice
+  newName: iliasroo/currencyservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/emailservice
+  newName: iliasroo/emailservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
+  newName: iliasroo/frontend
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
+  newName: iliasroo/loadgenerator
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/paymentservice
+  newName: iliasroo/paymentservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/productcatalogservice
+  newName: iliasroo/productcatalogservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/recommendationservice
+  newName: iliasroo/recommendationservice
+  newTag: sha-b66979a
+- name: us-central1-docker.pkg.dev/google-samples/microservices-demo/shippingservice
+  newName: iliasroo/shippingservice
+  newTag: sha-b66979a

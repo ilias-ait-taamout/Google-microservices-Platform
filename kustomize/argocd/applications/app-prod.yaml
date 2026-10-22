@@ -1,0 +1,30 @@
+# prod — synchronisation MANUELLE. Le bloc `syncPolicy.automated` est ABSENT,
+# et c'est la totalité du mécanisme : sans lui, ArgoCD détecte la dérive,
+# l'affiche en `OutOfSync`, et attend une action humaine.
+#
+# Cette approbation manuelle est en réalité garantie DEUX FOIS, et c'est
+# l'argument principal de la décision F :
+#   1. ici, par l'absence de `automated` ;
+#   2. et surtout dans Git, parce que `main` porte un ruleset exigeant une
+#      pull request. La CI ne PEUT PAS y pousser un changement de tag, même si
+#      un workflow essayait. La frontière de protection et la frontière
+#      d'environnement sont la même ligne.
+#
+# Le point 2 est le plus solide : une case à cocher dans ArgoCD peut être
+# décochée par erreur, une protection de branche côté serveur Git non.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: online-boutique-prod
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ilias-ait-taamout/Google-microservices-Platform.git
+    targetRevision: main
+    path: kustomize/overlays/prod
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: prod

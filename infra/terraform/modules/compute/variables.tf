@@ -129,7 +129,7 @@ variable "k3s_token" {
 }
 
 variable "disable_traefik" {
-  description = "k3s ships Traefik as its default ingress. Disabled here because Phase 2/3 installs its own; two ingress controllers fighting over port 80 is a bad first day."
+  description = "Disable the Traefik that k3s ships as its default ingress. True through phase 2, when nothing used it and two ingress controllers would have fought over port 80. Phase 3 sets it to false (decision G) and uses that Traefik rather than installing another. Changing it rewrites user_data, so the instances are replaced."
   type        = bool
   default     = true
 }

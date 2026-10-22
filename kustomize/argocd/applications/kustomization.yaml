@@ -1,0 +1,14 @@
+# Les trois Application ArgoCD, une par environnement.
+#
+# Appliquées séparément de `kustomize/argocd/` à dessein : installer l'opérateur
+# et lui confier des applications sont deux gestes différents, et on veut
+# pouvoir supprimer les trois Application sans désinstaller ArgoCD.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - app-dev.yaml
+  - app-staging.yaml
+  - app-prod.yaml

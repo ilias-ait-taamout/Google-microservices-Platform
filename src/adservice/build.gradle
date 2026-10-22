@@ -15,8 +15,41 @@ group = "adservice"
 version = "0.1.0-SNAPSHOT"
 
 def grpcVersion = "1.80.0"
-def jacksonCoreVersion = "2.21.2"
-def jacksonDatabindVersion = "2.21.2"
+// Netty arrive transitivement via io.grpc:grpc-netty. Le POM de grpc-core
+// 1.80.0 declare netty 4.1.130.Final : la ligne 4.1 est celle que gRPC attend.
+//
+// Trivy publie, pour chaque avis, un correctif PAR LIGNE maintenue. Lues en
+// entier, les trois reponses sont :
+//   netty-codec-http2 : 4.1.132 / 4.1.133 / 4.1.136   (et 4.2.11 / 4.2.13 / 4.2.16)
+//   netty-codec-http  : 4.1.132 / 4.1.133 / 4.1.136   (et 4.2.10 / 4.2.13 / 4.2.16)
+//   netty-handler     : 4.1.135 / 4.1.137             (et 4.2.15 / 4.2.17)
+//
+// Tout est donc corrige DANS la ligne 4.1, et il suffit de monter a 4.1.137 :
+// aucun changement de ligne, aucun risque de panne a l'execution sous un gRPC
+// qui attend la 4.1. La conclusion inverse, tiree plus tot, venait d'une
+// annotation qui ne montrait que la premiere version du champ FixedVersion.
+//
+// Toute la famille est forcee a la meme version : les modules netty sont
+// publies ensemble et ne se melangent pas entre versions.
+def nettyVersion = "4.1.137.Final"
+configurations.all {
+    resolutionStrategy {
+        force "io.netty:netty-common:${nettyVersion}",
+              "io.netty:netty-buffer:${nettyVersion}",
+              "io.netty:netty-transport:${nettyVersion}",
+              "io.netty:netty-transport-native-unix-common:${nettyVersion}",
+              "io.netty:netty-resolver:${nettyVersion}",
+              "io.netty:netty-codec:${nettyVersion}",
+              "io.netty:netty-codec-http:${nettyVersion}",
+              "io.netty:netty-codec-http2:${nettyVersion}",
+              "io.netty:netty-codec-socks:${nettyVersion}",
+              "io.netty:netty-handler:${nettyVersion}",
+              "io.netty:netty-handler-proxy:${nettyVersion}"
+    }
+}
+
+def jacksonCoreVersion = "2.21.7"
+def jacksonDatabindVersion = "2.21.7"
 def protocVersion = "4.34.1"
 
 tasks.withType(JavaCompile) {

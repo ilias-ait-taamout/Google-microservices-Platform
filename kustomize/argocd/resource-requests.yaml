@@ -1,0 +1,112 @@
+# Le manifeste officiel d'ArgoCD ne déclare AUCUNE ressource : zéro occurrence
+# de `cpu:` sur ses 34 000 lignes. Conséquence concrète, et elle n'est pas
+# cosmétique : des pods sans `requests` sont invisibles pour l'ordonnanceur.
+# Ils se placent toujours, quelle que soit la charge réelle du nœud, ils
+# n'apparaissent dans aucun calcul de capacité, et ils sont les PREMIERS évincés
+# sous pression mémoire (classe BestEffort).
+#
+# Notre étude de capacité de la phase 2 chiffre la réservation à 73 % de CPU par
+# nœud. Laisser sept pods hors de ce calcul reviendrait à invalider l'étude.
+# On déclare donc des requests explicites, modestes et mesurables :
+#
+#   application-controller   250m / 512Mi   le plus lourd : il réconcilie
+#   repo-server              100m / 256Mi   rendu Kustomize/Helm
+#   server                   100m / 128Mi   API et interface
+#   redis                     50m /  64Mi   cache
+#   applicationset-controller 50m / 128Mi
+#   notifications-controller   0            mis à l'échelle zéro, voir plus bas
+#   dex-server                 0            mis à l'échelle zéro, voir plus bas
+#
+# Total réservé : 550m / 1088Mi, à confronter aux ~1500m de marge mesurée.
+#
+# dex et notifications sont mis à ZÉRO RÉPLIQUE plutôt que supprimés :
+#   - dex ne sert qu'à l'authentification SSO (OIDC, LDAP, GitHub). Le projet
+#     se connecte avec le compte admin local, qui ne passe pas par dex.
+#   - notifications n'envoie que des alertes vers Slack ou courriel, hors
+#     périmètre de cette phase.
+# Deux pods de moins, deux surfaces d'attaque de moins, et un retour arrière
+# qui tient en une ligne — alors qu'une suppression par `$patch: delete`
+# demanderait de réintroduire les ressources à la main.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-redis
+spec:
+  template:
+    spec:
+      containers:
+        - name: redis
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-applicationset-controller
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-applicationset-controller
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-dex-server
+spec:
+  replicas: 0
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-notifications-controller
+spec:
+  replicas: 0

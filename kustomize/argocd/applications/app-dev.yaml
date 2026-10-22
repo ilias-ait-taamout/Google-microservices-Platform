@@ -1,0 +1,40 @@
+# dev — synchronisation AUTOMATIQUE, aucune approbation (ADR-003).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: online-boutique-dev
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ilias-ait-taamout/Google-microservices-Platform.git
+    # Tache 22 : revenu sur `develop`, comme la decision F le prevoit. Le
+    # detour par la branche de fonctionnalite n'existait que parce que tout le
+    # travail de la phase 3 y vivait et que l'overlay dev de `develop` ne
+    # contenait encore aucune de nos images.
+    targetRevision: develop
+    path: kustomize/overlays/dev
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+
+  syncPolicy:
+    automated:
+      # prune : ce que Git ne déclare plus est supprimé du cluster. Sans cela,
+      # une ressource retirée d'un overlay survivrait indéfiniment et l'état
+      # réel cesserait de correspondre à l'état déclaré -- ce que le GitOps
+      # existe précisément pour empêcher.
+      prune: true
+      # selfHeal : une modification faite à la main sur le cluster est annulée.
+      # C'est le comportement voulu, et il surprend en session de débogage :
+      # un `kubectl edit` est réécrit en quelques secondes. Pour déboguer, on
+      # désactive l'Application, pas la politique.
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
