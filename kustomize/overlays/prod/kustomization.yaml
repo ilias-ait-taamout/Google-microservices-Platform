@@ -16,6 +16,7 @@ resources:
 components:
   - ../../components/without-loadgenerator
   - ../../components/network-policies
+  - ../../components/non-public-frontend
 
 namespace: prod
 
@@ -47,7 +48,6 @@ replicas:
     count: 2
 
 patches:
-  - path: frontend-external-nodeport.yaml
   # Removes the two loadgenerator orphans without-loadgenerator leaves
   # behind. Added after task 14: kube-score flags the dangling
   # NetworkPolicy. See docs/phase2/baseline/README.md.

@@ -27,12 +27,12 @@ name: build-push
 
 on:
   push:
-    # TEMPORARY: feature/phase3-cicd is here so the pipeline can be debugged
-    # without merging a broken workflow into develop first. Remove it at task
-    # 22. It is needed because workflow_dispatch only offers a "Run workflow"
-    # button once the file exists on the DEFAULT branch (main) - which, for a
-    # workflow being written, it does not yet.
-    branches: [develop, feature/phase3-cicd]
+    # La branche de fonctionnalite a ete retiree a la tache 22 : elle n'etait la
+    # que pour deboguer le pipeline sans fusionner d'abord un workflow casse
+    # dans develop, et parce que workflow_dispatch n'offre son bouton qu'une
+    # fois le fichier present sur la branche par defaut. Les deux raisons
+    # disparaissent avec la fusion.
+    branches: [develop]
     paths:
       - 'src/**'
       - '.github/workflows/build-push.yml'

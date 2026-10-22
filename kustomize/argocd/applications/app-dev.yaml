@@ -9,15 +9,11 @@ spec:
 
   source:
     repoURL: https://github.com/ilias-ait-taamout/Google-microservices-Platform.git
-    # TEMPORAIRE — à remettre sur `develop` à la tâche 22.
-    #
-    # La décision F associe `develop` à dev. Mais tout le travail de la phase 3
-    # vit sur cette branche de fonctionnalité : l'overlay dev de `develop` ne
-    # contient encore AUCUNE de nos images, et pointer ArgoCD dessus
-    # déploierait les images v0.10.5 de Google. Même exception, même raison et
-    # même échéance que la présence de cette branche dans le déclencheur de
-    # `build-push.yml`.
-    targetRevision: feature/phase3-cicd
+    # Tache 22 : revenu sur `develop`, comme la decision F le prevoit. Le
+    # detour par la branche de fonctionnalite n'existait que parce que tout le
+    # travail de la phase 3 y vivait et que l'overlay dev de `develop` ne
+    # contenait encore aucune de nos images.
+    targetRevision: develop
     path: kustomize/overlays/dev
 
   destination:

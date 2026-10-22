@@ -24,6 +24,18 @@ resources:
 - namespace.yaml
 - ingress.yaml
 
+# Tache 19 : l'acces passe desormais par l'Ingress, plus par un NodePort.
+#
+# `non-public-frontend` ne convertit PAS frontend-external en ClusterIP : il le
+# SUPPRIME ($patch: delete), ne laissant que le Service interne `frontend` que
+# l'Ingress cible. C'est exactement pour cela qu'il etait inutilisable en
+# phase 2, ou le NodePort etait le seul chemin d'acces.
+#
+# Consequence mesurable : le constat `Service Type` de la base de reference
+# securite doit disparaitre, puisqu'il ne reste plus aucun Service NodePort.
+components:
+  - ../../components/non-public-frontend
+
 namespace: dev
 
 # `labels` rather than the deprecated `commonLabels`: selectors are immutable
@@ -34,8 +46,6 @@ labels:
     app.kubernetes.io/part-of: online-boutique
     environment: dev
 
-patches:
-- path: frontend-external-nodeport.yaml
 
 # Pin the two third-party images the base leaves floating.
 #
