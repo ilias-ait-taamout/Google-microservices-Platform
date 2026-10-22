@@ -65,7 +65,7 @@ images:
   newTag: sha-b66979a
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
-  newTag: sha-d3cf81c
+  newTag: sha-b66979a
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
   newName: iliasroo/loadgenerator
   newTag: sha-b66979a
