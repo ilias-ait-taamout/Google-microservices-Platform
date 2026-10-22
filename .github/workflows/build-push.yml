@@ -550,7 +550,15 @@ jobs:
       cancel-in-progress: false
 
     env:
-      OVERLAY: kustomize/overlays/dev
+      # Le SEUL fichier que ce job modifie. C'etait `kustomize/overlays/dev`
+      # jusqu'au 22 octobre, et c'etait un defaut : `staging` et `prod` lisent
+      # leur propre overlay, donc une fusion promouvait le fichier sans
+      # promouvoir les images. Les trois overlays referencent desormais ce
+      # composant unique, et une fusion promeut reellement.
+      CI_IMAGES: kustomize/ci-images
+      # Ce qu'on rend pour verifier que l'ecriture n'a rien casse : un
+      # composant seul ne se rend pas, il faut un overlay qui le consomme.
+      RENDER_CHECK: kustomize/overlays/dev
       UPSTREAM: us-central1-docker.pkg.dev/google-samples/microservices-demo
       KUSTOMIZE_VERSION: v5.8.1
       # Même principe que l'épinglage des actions par SHA : un fichier de
@@ -608,13 +616,13 @@ jobs:
           # leur défaut omis) mais conserve les commentaires, et le rendu est
           # identique — vérifié par un `kustomize build` avant/après qui ne
           # diffère que sur les lignes `image:`.
-          cd "$OVERLAY"
+          cd "$CI_IMAGES"
           for SERVICE in $SERVICES; do
             kustomize edit set image "${UPSTREAM}/${SERVICE}=${IMAGE_OWNER}/${SERVICE}:${TAG}"
           done
           cd - > /dev/null
 
-          if git diff --quiet -- "$OVERLAY/kustomization.yaml"; then
+          if git diff --quiet -- "$CI_IMAGES/kustomization.yaml"; then
             echo "Les tags étaient déjà à jour."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -627,7 +635,7 @@ jobs:
             echo "changed=true"
           } >> "$GITHUB_OUTPUT"
 
-          git --no-pager diff -- "$OVERLAY/kustomization.yaml"
+          git --no-pager diff -- "$CI_IMAGES/kustomization.yaml"
 
       - name: Prove the overlay still renders
         if: steps.edit.outputs.changed == 'true'
@@ -635,7 +643,7 @@ jobs:
           set -euo pipefail
           # Pousser un overlay qui ne rend pas, c'est casser ArgoCD pour tout le
           # monde. Le contrôle coûte une seconde.
-          kustomize build "$OVERLAY" > /tmp/render.yaml
+          kustomize build "$RENDER_CHECK" > /tmp/render.yaml
           echo "Rendu : $(grep -c '^---' /tmp/render.yaml) documents, $(wc -l < /tmp/render.yaml) lignes."
           grep -E '^\s+image: ' /tmp/render.yaml | sort -u
 
@@ -654,7 +662,7 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add "$OVERLAY/kustomization.yaml"
+          git add "$CI_IMAGES/kustomization.yaml"
 
           # [skip ci] est EXIGÉ par ADR-004. Sans lui : le bump déclenche un
           # build, qui produit un bump, qui déclenche un build. Un push fait
