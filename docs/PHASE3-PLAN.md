@@ -278,7 +278,7 @@ default (`includeSelectors: false` disappears) but keeps comments, and
 end, eleven services out of eleven published and signed.**
 
 ### CD
-- [ ] **11.** `kustomize/argocd/` — ArgoCD as a remote base (decision E),
+- [x] **11.** `kustomize/argocd/` — ArgoCD as a remote base (decision E),
       **pinned to an exact version**, with our patches
 - [ ] **12.** Install it, reach the UI, change the admin password
 - [ ] **13.** Three ArgoCD `Application`s per decision F and ADR-003:
@@ -289,9 +289,9 @@ end, eleven services out of eleven published and signed.**
       That is the whole point of an immutable tag — prove it
 
 ### Ingress (decision G)
-- [ ] **16.** Remove `--disable traefik` from `control-plane.sh.tftpl`. This
+- [x] **16.** Remove `--disable traefik` from `control-plane.sh.tftpl`. This
       changes `user_data`, so the instances are replaced on the next `up`
-- [ ] **17.** Open **port 80 from `admin_cidr`** in the security group. The
+- [x] **17.** Open **port 80 from `admin_cidr`** in the security group. The
       `allow_http_from_internet` variable exists but `envs/dev/main.tf`
       hardcodes it to `false`, and it would open 80 to `0.0.0.0/0` anyway —
       a separate rule scoped to `admin_cidr` is the right fix
@@ -301,6 +301,34 @@ end, eleven services out of eleven published and signed.**
 - [ ] **19.** Switch the overlays to `components/non-public-frontend`, which
       deletes `frontend-external`, and drop the NodePort patches. Re-run
       kube-score and checkov: the `Service Type` finding should disappear
+
+
+**Tasks 11, 16 and 17 done (22 October 2026) -- all three local and free, and
+16-17 deliberately done BEFORE bringing the cluster up.**
+
+Task 11: ArgoCD pinned to v3.5.6 as a remote Kustomize base. Two patches, each
+closing a gap the default install leaves. Its manifest declares NO cpu at all
+in 34,000 lines, and pods without requests are invisible to the scheduler --
+they place regardless of node load and appear in no capacity calculation,
+which would have invalidated the phase 2 study. Explicit requests total
+550m / 1088Mi against ~1500m of headroom, with dex and notifications scaled to
+zero (no SSO, no notifications in scope). The server is exposed on NodePort
+30090 because the security group opens 30000-32767 to admin_cidr and not 80.
+
+A kustomize trap found there and documented in the patch: the merge key of
+`Service.spec.ports` is the pair (port, protocol). Omit `protocol` and the
+entry matches nothing and is DROPPED SILENTLY -- the first render applied
+`type: NodePort` and lost `nodePort: 30090` without a word. Reproduced in
+isolation before being fixed.
+
+Tasks 16-17: `disable_traefik = false` is now passed explicitly from
+`envs/dev`, so the decision is visible at the environment level rather than
+hidden in a module default, and a separate rule opens port 80 to `admin_cidr`
+ALONE. The pre-existing `allow_http_from_internet` was not reused: it opens 80
+to 0.0.0.0/0. 443 stays closed until there is a certificate to serve on it.
+
+Both change `user_data`, so the instances are replaced on the next `up`. That
+is why these tasks come before the cluster is started and not after.
 
 ### Validation and close
 - [ ] **20.** Three environments through the Ingress, three hostnames, and the
