@@ -15,6 +15,22 @@ group = "adservice"
 version = "0.1.0-SNAPSHOT"
 
 def grpcVersion = "1.80.0"
+// Netty arrive transitivement via io.grpc:grpc-netty. Le POM de grpc-core
+// 1.80.0 declare netty 4.1.130.Final : la ligne 4.1 est celle que gRPC
+// attend, et c'est la seule ou l'on puisse monter sans risque.
+//
+// Trivy demande 4.1.136 pour netty-codec, mais 4.2.16/4.2.17 pour
+// netty-codec-http, -http2 et -handler : ces correctifs-la n'existent que
+// dans la ligne 4.2. Forcer 4.2 sous un gRPC qui attend 4.1 exposerait a une
+// panne a l'execution qui compile proprement -- le pire type de regression.
+// On prend donc le correctif qui reste DANS la ligne declaree, et on
+// documente les 26 constats restants plutot que de les traiter a l'aveugle.
+configurations.all {
+    resolutionStrategy {
+        force "io.netty:netty-codec:4.1.136.Final"
+    }
+}
+
 def jacksonCoreVersion = "2.21.7"
 def jacksonDatabindVersion = "2.21.7"
 def protocVersion = "4.34.1"

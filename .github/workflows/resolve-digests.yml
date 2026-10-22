@@ -67,7 +67,12 @@ jobs:
             | sed 's/<[^>]*>/ /g' | tr -s ' ' \
             | while read -r line; do echo "::notice title=GrpcNetty::$line"; done
 
-          # Et la version de jackson qu'on vient d'épingler existe-t-elle ?
+          # 
+          # La version de netty qu'on force existe-t-elle reellement ?
+          C=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "https://repo1.maven.org/maven2/io/netty/netty-codec/4.1.136.Final/netty-codec-4.1.136.Final.pom")
+          echo "::notice title=NettyCheck::netty-codec 4.1.136.Final -> HTTP $C"
+
           for V in 2.21.7; do
             C=$(curl -sS -o /dev/null -w '%{http_code}' \
               "https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/$V/jackson-databind-$V.pom")
@@ -90,7 +95,8 @@ jobs:
             "alpine:3.23.6" \
             "eclipse-temurin:25.0.4.1_1-jre-alpine" \
             "mcr.microsoft.com/dotnet/runtime-deps:10.0.0-noble-chiseled" \
-            "mcr.microsoft.com/dotnet/runtime-deps:10.0.1-noble-chiseled" \
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0.13-noble-chiseled" \
+            "mcr.microsoft.com/dotnet/runtime-deps:10.0.12-noble-chiseled" \
             "mcr.microsoft.com/dotnet/sdk:10.0.100-noble"
           do
             D=$(docker buildx imagetools inspect "$REF" --format '{{.Manifest.Digest}}' 2>/dev/null || true)
