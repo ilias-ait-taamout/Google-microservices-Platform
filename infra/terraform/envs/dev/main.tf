@@ -48,6 +48,19 @@ module "compute" {
 
   k3s_version = var.k3s_version
 
+  # DECISION G (phase 3) : on reactive le Traefik embarque de k3s.
+  #
+  # La phase 1 le desactivait parce que rien ne l'utilisait et que deux
+  # controleurs d'ingress qui se disputent le port 80 font une mauvaise
+  # premiere journee. La phase 3 a besoin d'un Ingress, et celui de k3s ne
+  # coute rien a installer : k3s le deploie par sa propre CRD HelmChart
+  # interne, ce qui n'introduit aucune dependance a Helm de notre cote.
+  #
+  # ATTENTION : ceci change le `user_data`, donc les instances sont REMPLACEES
+  # au prochain `apply`. Ce n'est pas une modification a chaud -- raison pour
+  # laquelle cette tache est faite AVANT d'allumer le cluster, et non apres.
+  disable_traefik = false
+
   # Set ONE of these two in terraform.tfvars.
   existing_key_pair_name = var.existing_key_pair_name
   ssh_public_key_path    = var.ssh_public_key_path

@@ -1,0 +1,36 @@
+# ArgoCD — installation déclarative, versionnée, et patchée.
+#
+# DÉCISION E (phase 3) : ArgoCD est consommé comme une BASE KUSTOMIZE DISTANTE,
+# son manifeste officiel référencé comme ressource, avec nos patchs au-dessus.
+#
+#   - Cohérence : le projet a choisi Kustomize plutôt que Helm en phase 2.
+#     Installer ArgoCD par Helm contredirait une décision prise à l'échelle du
+#     projet.
+#   - Versionnement : on sait, à chaque commit, quelle version exacte d'ArgoCD
+#     le cluster exécute. `kubectl apply -f <url>` ne le dit nulle part.
+#   - Modifiabilité : l'installation par défaut ne convient pas telle quelle
+#     (voir les deux patchs), et un patch est traçable là où un `kubectl edit`
+#     ne l'est pas.
+#
+# LA RÉFÉRENCE EST ÉPINGLÉE À UNE VERSION EXACTE, jamais à une branche. Ce
+# serait contradictoire autrement : l'outil chargé de garantir que le cluster
+# est conforme à Git serait lui-même installé depuis une source mouvante.
+# C'est le même principe que l'épinglage des actions par SHA, l'immutabilité
+# des tags d'image (ADR-002) et la version de k3s figée dans Terraform.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: argocd
+
+resources:
+  - namespace.yaml
+  # v3.5.6, publiée le 20 octobre 2026. Toutes les API utilisées par ce
+  # manifeste sont stables (v1, apps/v1, rbac/v1, networking.k8s.io/v1,
+  # apiextensions/v1) : vérifié, donc compatible avec le k3s v1.31.5 du
+  # cluster. Les seules CRD introduites sont en v1alpha1, qui est leur propre
+  # version et non une API Kubernetes dépréciée.
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.6/manifests/install.yaml
+
+patches:
+  - path: resource-requests.yaml
+  - path: server-nodeport.yaml

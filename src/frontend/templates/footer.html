@@ -20,6 +20,14 @@
     <div class="footer-top">
         <div class="container footer-social">
             <p class="footer-text">This website is hosted for demo purposes only. It is not an actual shop. This is not a Google product.</p>
+            <!-- Marqueur de demonstration de la chaine CI/CD.
+                 Ce numero est incremente a la main pour montrer, en direct,
+                 qu'un commit traverse seul la chaine : construction, scan
+                 Trivy, publication, signature Cosign, verification, ecriture
+                 du nouveau tag dans l'overlay par le bot, puis synchronisation
+                 par ArgoCD. Si la page affiche le nouveau numero, les sept
+                 etapes ont eu lieu sans aucune intervention manuelle. -->
+            <p class="footer-text"><b>Plateforme DevSecOps</b> &mdash; build CI n&deg; 1</p>
             <p class="footer-text">© 2020-{{ .currentYear }} Google LLC (<a href="https://github.com/GoogleCloudPlatform/microservices-demo">Source Code</a>)</p>
             <p class="footer-text">
                 <small>

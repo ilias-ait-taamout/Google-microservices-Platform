@@ -97,3 +97,8 @@ CLAUDE.local.md
 
 # Claude desktop app scratch output, not part of the project
 Claude outputs/
+
+# Stray logs (terraform/tooling), never part of the project
+debug.log
+**/debug.log
+crash.log

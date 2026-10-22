@@ -1,6 +1,6 @@
 ARG BUILDPLATFORM=linux/amd64
 
-FROM --platform=$BUILDPLATFORM python:3.14.4-alpine@sha256:dd4d2bd5b53d9b25a51da13addf2be586beebd5387e289e798e4083d94ca837a AS base
+FROM --platform=$BUILDPLATFORM python:3.14.8-alpine@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72 AS base
 
 FROM base AS builder
 
@@ -12,7 +12,8 @@ RUN apk update \
     && rm -rf /var/cache/apk/*
 
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+    && pip install --upgrade "setuptools>=78.1.1"
 
 FROM base
 
@@ -30,6 +31,19 @@ COPY --from=builder /usr/local/lib/python3.14/ /usr/local/lib/python3.14/
 COPY . .
 
 ENV PORT="8080"
+
+# Une image d'execution n'a aucune raison d'embarquer un installateur de
+# paquets. pip vendorise ses propres copies de certifi, urllib3, msgpack et
+# setuptools dans pip/_vendor/vendor.txt, et Trivy les compte comme des
+# paquets installes : ce sont les quatre constats restants, strictement
+# identiques sur les trois services Python et absents de leurs requirements.
+# Monter pip ne sert a rien : sa derniere version vendorise encore
+# msgpack 1.1.2 et urllib3 2.7.0 (verifie sur ses quatre dernieres versions).
+#
+# APRES tous les COPY, et c'est le point delicat : un COPY fusionne, donc une
+# suppression faite plus haut serait annulee par la copie venue du builder.
+RUN python -m pip uninstall -y pip
+
 EXPOSE 8080
 
 ENTRYPOINT ["python", "recommendation_server.py"]

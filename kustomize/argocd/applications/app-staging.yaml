@@ -1,0 +1,30 @@
+# staging — synchronisation AUTOMATIQUE, mais l'arrivée sur `release` exige une
+# pull request (ADR-003 : « automatique, revue de PR requise »). La barrière
+# n'est pas dans ArgoCD, elle est dans Git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: online-boutique-staging
+  namespace: argocd
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/ilias-ait-taamout/Google-microservices-Platform.git
+    targetRevision: release
+    path: kustomize/overlays/staging
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

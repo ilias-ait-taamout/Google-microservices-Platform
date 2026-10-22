@@ -8,6 +8,7 @@ resources:
   - ../../base
   - namespace.yaml
   - frontend-pdb.yaml
+  - ingress.yaml
 
 # Same two components as staging, for the same reasons - see
 # overlays/staging/kustomization.yaml for the full note on what a Component is
@@ -15,6 +16,8 @@ resources:
 components:
   - ../../components/without-loadgenerator
   - ../../components/network-policies
+  - ../../components/non-public-frontend
+  - ../../ci-images
 
 namespace: prod
 
@@ -46,7 +49,6 @@ replicas:
     count: 2
 
 patches:
-  - path: frontend-external-nodeport.yaml
   # Removes the two loadgenerator orphans without-loadgenerator leaves
   # behind. Added after task 14: kube-score flags the dangling
   # NetworkPolicy. See docs/phase2/baseline/README.md.

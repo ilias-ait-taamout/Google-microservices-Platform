@@ -1,65 +1,120 @@
-# GitHub Actions Workflows
+# Intégration continue
 
-This page describes the CI/CD workflows for the Online Boutique app, which run in [Github Actions](https://github.com/GoogleCloudPlatform/microservices-demo/actions).
+Ce dossier contient la chaîne d'intégration continue du projet. Il remplace
+le README d'origine de Google, qui décrivait des runners auto-hébergés sur GCE
+et un cluster GKE de test — aucun des deux n'existe dans ce projet.
 
-## Infrastructure
+| Fichier | Rôle |
+|---|---|
+| `build-push.yml` | la chaîne complète : construire, scanner, publier, signer, vérifier, puis écrire le nouveau tag dans l'overlay `dev` |
+| `install-dependencies.sh` | hérité du dépôt amont, non utilisé par cette chaîne |
 
-The CI/CD pipelines for Online Boutique run in Github Actions, using a pool of two [self-hosted runners]((https://help.github.com/en/actions/automating-your-workflow-with-github-actions/about-self-hosted-runners)). These runners are GCE instances (virtual machines) that, for every open Pull Request in the repo, run the code test pipeline, deploy test pipeline, and (on main) deploy the latest version of the app to [cymbal-shops.retail.cymbal.dev](https://cymbal-shops.retail.cymbal.dev)
-
-We also host a test GKE cluster, which is where the deploy tests run. Every PR has its own namespace in the cluster.
-
-## Workflows
-
-**Note**: In order for the current CI/CD setup to work on your pull request, you must branch directly off the repo (no forks). This is because the Github secrets necessary for these tests aren't copied over when you fork.
-
-### Code Tests - [ci-pr.yaml](ci-pr.yaml)
-
-These tests run on every commit for every open PR, as well as any commit to main / any release branch. Currently, this workflow runs only Go unit tests.
-
-
-### Deploy Tests- [ci-pr.yaml](ci-pr.yaml)
-
-These tests run on every commit for every open PR, as well as any commit to main / any release branch. This workflow:
-
-1. Creates a dedicated GKE namespace for that PR, if it doesn't already exist, in the PR GKE cluster.
-2. Uses `skaffold run` to build and push the images specific to that PR commit. Then skaffold deploys those images, via `kubernetes-manifests`, to the PR namespace in the test cluster.
-3. Tests to make sure all the pods start up and become ready.
-4. Gets the LoadBalancer IP for the frontend service.
-5. Comments that IP in the pull request, for staging.
-
-### Push and Deploy Latest - [push-deploy](push-deploy.yml)
-
-This is the Continuous Deployment workflow, and it runs on every commit to the main branch. This workflow:
-
-1. Builds the container images for every service, tagging as `latest`.
-2. Pushes those images to Google Container Registry.
-
-Note that this workflow does not update the image tags used in `release/kubernetes-manifests.yaml` - these release manifests are tied to a stable `v0.x.x` release.
-
-### Cleanup - [cleanup.yaml](cleanup.yaml)
-
-This workflow runs when a PR closes, regardless of whether it was merged into main. This workflow deletes the PR-specific GKE namespace in the test cluster.
-
-## Appendix - Creating a new Actions runner
-
-Should one of the two self-hosted Github Actions runners (GCE instances) fail, or you want to add more runner capacity, this is how to provision a new runner. Note that you need IAM access to the admin Online Boutique GCP project in order to do this.
-
-1. Create a GCE instance.
-    - VM should be at least n1-standard-4 with 50GB persistent disk
-    - VM should use custom service account with permissions to: access a GKE cluster, create GCS storage buckets, and push to GCR.
-2. SSH into new VM through the Google Cloud Console.
-3. Install project-specific dependencies, including go, docker, skaffold, and kubectl:
+## Ce que fait `build-push.yml`
 
 ```
-wget -O - https://raw.githubusercontent.com/GoogleCloudPlatform/microservices-demo/main/.github/workflows/install-dependencies.sh | bash
+push sur develop  (uniquement si src/** ou ce fichier a changé)
+   │
+   ├─ job « changes »   quels services ont réellement changé ?
+   │                    comparaison avec le PUSH PRÉCÉDENT
+   │
+   ├─ job « build »     une exécution par service, max 1 à la fois
+   │                    construire en local → scanner → VERROU
+   │                    → publier → signer → VÉRIFIER → déposer un marqueur
+   │
+   └─ job « bump »      ramasser les marqueurs, écrire les tags dans
+                        l'overlay dev, UN seul commit, et le pousser
 ```
 
-The instance will restart when the script completes in order to finish the Docker install.
+ArgoCD lit ensuite ce commit et synchronise le cluster. La CI n'a **aucun
+accès au cluster** : elle écrit dans Git, c'est tout.
 
-4. SSH back into the VM.
+## Les décisions qui expliquent la forme du fichier
 
-5. Follow the instructions to add a new runner on the [Actions Settings page](https://github.com/GoogleCloudPlatform/microservices-demo/settings/actions) to authenticate the new runner
-6. Start GitHub Actions as a background service:
+**Toutes les actions sont épinglées par empreinte de commit complète.** Le
+19 mars 2026, un attaquant a réécrit par force 76 des 77 étiquettes de version
+de `aquasecurity/trivy-action` vers un code d'exfiltration d'identifiants
+(GHSA-69fq-xp46-6x23). Quiconque était épinglé sur une étiquette a reçu le code
+malveillant sans modifier une ligne de son workflow. Une étiquette est un
+pointeur mobile, une empreinte de commit n'en est pas un. La version reste en
+commentaire de fin de ligne, pour les humains et pour Dependabot.
+
+**L'ordre est construire → scanner → publier.** L'image est construite
+localement (`load: true`, `push: false`) et n'est publiée qu'après le verrou.
+L'ordre inverse rendrait une image vulnérable tirable par n'importe qui pendant
+tout l'intervalle entre la publication et la découverte.
+
+**Le verrou est une expression `jq` en pleine lumière**, pas un paramètre caché
+dans les entrées d'une action : HIGH ou CRITICAL, **et** un correctif existe en
+amont. Un constat sans version corrective ne peut pas être traité, et bloquer
+dessus n'apprendrait qu'une chose aux équipes — désactiver le scan.
+
+**Le champ `FixedVersion` est affiché en entier.** Il peut contenir plusieurs
+versions, une par ligne de version maintenue. N'en garder qu'une masque
+l'existence d'un correctif dans la ligne que le projet utilise réellement : ce
+défaut a existé ici, et il a fait conclure à tort qu'une migration de version
+majeure était nécessaire pour Netty.
+
+**La signature porte sur le digest, jamais sur le tag**, et sans clé privée :
+GitHub émet un jeton OIDC, Fulcio le convertit en certificat de dix minutes, la
+signature part dans le journal de transparence Rekor. La vérification qui suit
+est **fatale** — une signature invérifiable transforme la signature en théâtre.
+
+**`cosign login` avant de signer.** cosign n'hérite pas des identifiants de
+`docker/login-action` : sans ce login il interroge Docker Hub en anonyme et
+tombe sous la limite de 100 requêtes par 6 h, **partagée par adresse IP** avec
+les autres runners GitHub.
+
+**`max-parallel: 1`.** Chaque lecture de manifeste par cosign compte comme un
+pull. Onze services signant simultanément épuisent le quota du registre ; en
+séquentiel, chacun dialogue seul avec Fulcio, Rekor et Docker Hub. Le coût est
+du temps d'horloge : les couches sont en cache, c'est la signature qui prend le
+temps.
+
+**Un seul job `bump`, pas onze.** Les sorties de job ne survivent pas à une
+matrice — chaque exécution écraserait la précédente — donc chaque service
+dépose un **artefact marqueur**, et `bump` les ramasse. Onze commits
+voudraient dire onze synchronisations ArgoCD pour un seul changement de code.
+
+**Un service bloqué par le verrou ne dépose pas de marqueur**, donc son tag
+n'est pas bougé et l'overlay garde l'image précédente. C'est ce qui rend le
+déploiement service par service possible, et c'est arrivé en vrai : un service
+dont la signature avait échoué est resté sur sa dernière image vérifiée,
+pendant que les dix autres avançaient.
+
+**Les compteurs sortent en annotations `::error` et `::notice`.** C'est la
+seule sortie de CI que l'API publique de GitHub sert **sans identifiant** sur
+un dépôt public : les journaux de job, les résumés d'étape et les artefacts en
+exigent tous. Sans cela, analyser onze services demande d'ouvrir onze pages à
+la main.
+
+## Lire les résultats sans identifiants
+
+```bash
+R=ilias-ait-taamout/Google-microservices-Platform
+A="Accept: application/vnd.github+json"
+
+curl -sS -H "$A" "https://api.github.com/repos/$R/actions/runs?per_page=5"
+curl -sS -H "$A" "https://api.github.com/repos/$R/actions/runs/<RUN>/jobs?per_page=50"
+curl -sS -H "$A" "https://api.github.com/repos/$R/check-runs/<JOB_ID>/annotations"
 ```
-sudo ~/actions-runner/svc.sh install ; sudo ~/actions-runner/svc.sh start
-```
+
+## Workflows supprimés à la clôture de la phase 3
+
+`bump-go-deps.yml`, `bump-python-deps.yml`, `diagnose-node-deps.yml` et
+`resolve-digests.yml` ont servi à la campagne de remédiation puis au
+diagnostic. Ils sont supprimés : un dépôt qui conserve son outillage jetable
+devient illisible. Dependabot est la réponse durable à la montée des
+dépendances, et il relève de la phase 4.
+
+## Secrets et variables attendus
+
+| Nom | Type | Usage |
+|---|---|---|
+| `DOCKERHUB_USERNAME` | **variable** | propriétaire des images |
+| `DOCKERHUB_TOKEN` | **secret** | publication |
+
+`DOCKERHUB_USERNAME` est une variable et non un secret, et ce n'est pas un
+détail : classé en secret, GitHub le masque partout — les journaux affichent
+`***/frontend` — et **refuse de transmettre la sortie d'un job** qui pourrait
+le contenir, ce dont Trivy et Cosign ont tous deux besoin. Surclasser une
+donnée non sensible a un coût opérationnel réel.

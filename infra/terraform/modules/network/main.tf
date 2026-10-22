@@ -124,6 +124,32 @@ resource "aws_vpc_security_group_ingress_rule" "nodeport_from_admin" {
   ip_protocol       = "tcp"
 }
 
+# Phase 3, tache 17 : HTTP pour l'Ingress Traefik, depuis le poste admin SEUL.
+#
+# La variable `allow_http_from_internet` existe deja plus bas, mais elle ouvre
+# le port 80 a 0.0.0.0/0 -- c'est-a-dire a Internet entier. Pour joindre les
+# trois environnements par leurs noms d'hotes <env>.<ip>.sslip.io pendant le
+# developpement et la demonstration, une regle DISTINCTE limitee a `admin_cidr`
+# est la bonne reponse : meme portee que les trois autres regles d'acces
+# administrateur, et aucune exposition publique.
+#
+# Traefik est deploye par k3s avec un Service de type LoadBalancer, que le
+# ServiceLB (Klipper) embarque lie aux ports hotes 80 et 443 sur CHAQUE noeud.
+# C'est ce qui rend cette regle necessaire : sans elle, l'Ingress existe mais
+# n'est joignable depuis nulle part.
+#
+# 443 n'est pas ouvert : les hotes sslip.io sont servis en HTTP tant qu'aucun
+# certificat n'est en place. Ouvrir un port qui ne sert a rien serait une
+# surface offerte sans contrepartie. A ajouter en phase 4, avec cert-manager.
+resource "aws_vpc_security_group_ingress_rule" "http_from_admin" {
+  security_group_id = aws_security_group.nodes.id
+  description       = "HTTP - Traefik ingress, from the admin workstation only"
+  cidr_ipv4         = var.admin_cidr
+  from_port         = 80
+  to_port           = 80
+  ip_protocol       = "tcp"
+}
+
 # --- Inbound between the cluster nodes ---------------------------------------
 #
 # DECISION: allow ALL traffic between members of this security group, rather
