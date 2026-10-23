@@ -29,7 +29,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: prod.15.237.184.165.sslip.io
+    - host: prod.15.237.202.142.sslip.io
       http:
         paths:
           - path: /
