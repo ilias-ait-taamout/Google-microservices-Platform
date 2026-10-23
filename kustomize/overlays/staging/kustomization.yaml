@@ -30,6 +30,7 @@ components:
   - ../../components/without-loadgenerator
   - ../../components/network-policies
   - ../../components/non-public-frontend
+  - ../../ci-images
 
 namespace: staging
 
