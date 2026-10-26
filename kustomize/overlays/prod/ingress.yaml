@@ -1,6 +1,6 @@
 # Ingress Traefik pour l'environnement prod — tache 18, decision G.
 #
-# Nom d'hote : prod.15.237.202.142.sslip.io
+# Nom d'hote : prod.35.181.166.76.sslip.io
 #
 # sslip.io resout n'importe quel nom contenant une adresse IP vers cette
 # adresse : aucun domaine a acheter, aucun DNS a exploiter. C'est ce qui rend
@@ -29,7 +29,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: prod.15.237.202.142.sslip.io
+    - host: prod.35.181.166.76.sslip.io
       http:
         paths:
           - path: /
