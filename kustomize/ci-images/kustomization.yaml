@@ -39,7 +39,7 @@ images:
   newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/frontend
   newName: iliasroo/frontend
-  newTag: sha-ed12e5e
+  newTag: sha-d19e70d
 - name: us-central1-docker.pkg.dev/google-samples/microservices-demo/loadgenerator
   newName: iliasroo/loadgenerator
   newTag: sha-d19e70d
